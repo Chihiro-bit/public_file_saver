@@ -1,9 +1,9 @@
 name: public_file_saver
 description: "A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports Android, iOS, and HarmonyOS."
 version: 1.0.0
-homepage: https://github.com/example/public_file_saver
-repository: https://github.com/example/public_file_saver
-issue_tracker: https://github.com/example/public_file_saver/issues
+homepage: https://github.com/Chihiro-bit/public_file_saver.git
+repository: https://github.com/Chihiro-bit/public_file_saver.git
+issue_tracker: https://github.com/Chihiro-bit/public_file_saver.git/issues
 
 environment:
   sdk: ^3.7.2
