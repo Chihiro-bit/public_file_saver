@@ -6,7 +6,9 @@ repository: https://github.com/Chihiro-bit/public_file_saver.git
 issue_tracker: https://github.com/Chihiro-bit/public_file_saver.git/issues
 
 environment:
-  sdk: ^3.7.2
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
 
 dependencies:
   flutter:
