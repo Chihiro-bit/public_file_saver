@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "public_file_saver",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}

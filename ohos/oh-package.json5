@@ -1,0 +1,14 @@
+{
+  "name": "public_file_saver",
+  "version": "1.0.0",
+  "description": "A cross-platform Flutter plugin to save files to publicly visible locations.",
+  "main": "index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ohos/flutter_ohos": "file:./har/flutter.har"
+  },
+  "devDependencies": {
+    "@ohos/hypium": "1.0.6"
+  }
+}
