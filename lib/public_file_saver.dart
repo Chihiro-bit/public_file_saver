@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:mime/mime.dart';
 
 import 'public_file_saver_platform_interface.dart';
+import 'src/io_compat_web.dart' if (dart.library.io) 'src/io_compat.dart';
 import 'src/public_saved_file.dart';
 
 export 'src/public_saved_file.dart';
