@@ -1,9 +1,9 @@
 name: public_file_saver
-description: "A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports Android, iOS, and HarmonyOS."
-version: 1.0.0
-homepage: https://github.com/Chihiro-bit/public_file_saver.git
-repository: https://github.com/Chihiro-bit/public_file_saver.git
-issue_tracker: https://github.com/Chihiro-bit/public_file_saver.git/issues
+description: "A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports Android, iOS, macOS, Web, Windows, Linux, and HarmonyOS."
+version: 1.1.0
+homepage: https://github.com/Chihiro-bit/public_file_saver
+repository: https://github.com/Chihiro-bit/public_file_saver
+issue_tracker: https://github.com/Chihiro-bit/public_file_saver/issues
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -12,6 +12,8 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_web_plugins:
     sdk: flutter
   plugin_platform_interface: ^2.0.2
   http: ^1.1.0
@@ -44,8 +46,17 @@ flutter:
         pluginClass: PublicFileSaverPlugin
       ios:
         pluginClass: PublicFileSaverPlugin
+      macos:
+        pluginClass: PublicFileSaverPlugin
       ohos:
         pluginClass: PublicFileSaverPlugin
+      linux:
+        pluginClass: PublicFileSaverPlugin
+      windows:
+        pluginClass: PublicFileSaverPluginCApi
+      web:
+        pluginClass: PublicFileSaverWeb
+        fileName: public_file_saver_web.dart
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

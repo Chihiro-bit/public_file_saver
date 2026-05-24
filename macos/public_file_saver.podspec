@@ -15,11 +15,9 @@ A cross-platform Flutter plugin to save files to publicly visible locations
   s.author           = { 'Chihiro-bit' => 'noreply@github.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'public_file_saver/Sources/public_file_saver/**/*.swift'
-  s.resource_bundles = {'public_file_saver_privacy' => ['public_file_saver/Sources/public_file_saver/Resources/PrivacyInfo.xcprivacy']}
-  s.dependency 'Flutter'
-  s.platform = :ios, '12.0'
+  s.dependency 'FlutterMacOS'
+  s.platform = :osx, '10.14'
 
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 end

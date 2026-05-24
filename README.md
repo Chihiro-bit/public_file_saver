@@ -1,6 +1,6 @@
 # public_file_saver
 
-A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports **Android**, **iOS**, and **HarmonyOS (OHOS)**.
+A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports **Android**, **iOS**, **macOS**, **Web**, **Windows**, **Linux**, and **HarmonyOS (OHOS)**.
 
 [![pub package](https://img.shields.io/pub/v/public_file_saver.svg)](https://pub.dev/packages/public_file_saver)
 
@@ -15,17 +15,22 @@ A cross-platform Flutter plugin to save files to publicly visible locations (Dow
 - ✅ Automatic file name sanitization
 - ✅ MIME type inference
 - ✅ Consistent return format across all platforms
+- ✅ Swift Package Manager support on iOS
 
 ## Platform Support
 
-| Feature | Android | iOS | HarmonyOS (OHOS) |
-|---------|---------|-----|------------------|
-| `saveBytes()` | ✅ | ✅ | ✅ |
-| `saveBytesWithDialog()` | ✅ | ✅ | ✅ |
-| `saveFile()` | ✅ | ✅ | ✅ |
-| `saveFromUrl()` | ✅ | ✅ | ✅ |
-| `subDir` parameter | ✅ | ✅ | ❌ |
-| `fileSuffixChoices` parameter | ❌ | ❌ | ✅ |
+| Feature | Android | iOS | macOS | Web | Windows | Linux | OHOS |
+|---------|---------|-----|-------|-----|---------|-------|------|
+| `saveBytes()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `saveBytesWithDialog()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `saveFile()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
+| `saveFromUrl()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `subDir` parameter | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| `fileSuffixChoices` parameter | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+¹ On Web, both modes trigger a normal browser download; the browser chooses the destination (typically the configured Downloads folder, or it prompts if the user has "ask where to save" enabled). The returned `PublicSavedFile` only carries `fileName`.
+
+² On Web, calling `saveFile(File)` throws `UnsupportedError` — `dart:io`'s `File` is not available in the browser. Read the bytes yourself and call `saveBytes()` instead.
 
 ## Installation
 
@@ -33,7 +38,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  public_file_saver: ^1.0.0
+  public_file_saver: ^1.1.0
 ```
 
 Then run:
@@ -61,6 +66,29 @@ Add the following keys to your `Info.plist` if you want users to access saved fi
 <key>LSSupportsOpeningDocumentsInPlace</key>
 <true/>
 ```
+
+### macOS
+
+If your app is sandboxed (the default for Mac App Store builds), enable user-selected file access in your entitlements to allow the save dialog to write outside the app sandbox:
+
+```xml
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+```
+
+Without the sandbox, no extra entitlements are needed. Direct (no-dialog) `saveBytes` writes to `~/Downloads`; in a sandboxed build, the system redirects this to the per-app container's Downloads folder.
+
+### Web
+
+No setup required. Both `saveBytes()` and `saveBytesWithDialog()` trigger a standard browser download — the browser decides the destination based on its own settings.
+
+### Windows
+
+No setup required. Direct mode uses `FOLDERID_Downloads` (the user's standard Downloads folder); dialog mode uses the native `IFileSaveDialog`.
+
+### Linux
+
+The plugin uses GTK 3, which is already linked by every Flutter Linux app, so no extra dependencies are required. Direct mode resolves the XDG Downloads directory (`g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)`), falling back to `$HOME` if XDG is not configured; dialog mode uses `GtkFileChooserNative`.
 
 ### HarmonyOS (OHOS)
 
@@ -113,6 +141,10 @@ Future<PublicSavedFile?> saveBytes({
 | Android 10+ | MediaStore Downloads | `uri`: content:// URI |
 | Android 9- | Public Downloads directory | `path`: full file path |
 | iOS | App Documents directory (visible in Files app) | `path`: full file path |
+| macOS | `~/Downloads` (or sandbox-redirected) | `uri` (file://) and `path` |
+| Web | Browser download (browser-chosen) | `fileName` only |
+| Windows | `FOLDERID_Downloads` | `path`: full file path |
+| Linux | XDG `$HOME/Downloads` | `uri` (file://) and `path` |
 | OHOS | User-selected via DocumentViewPicker | `uri` and `path` |
 
 **Example:**
@@ -164,6 +196,10 @@ Future<PublicSavedFile?> saveBytesWithDialog({
 |----------|-------------|---------|
 | Android | Storage Access Framework (ACTION_CREATE_DOCUMENT) | `uri`: content:// URI |
 | iOS | UIDocumentPickerViewController | `uri`: file:// URL, `path`: file path |
+| macOS | NSSavePanel | `uri` (file://) and `path` |
+| Web | Browser download (no real dialog — see notes above) | `fileName` only |
+| Windows | IFileSaveDialog (COM) | `path`: full file path |
+| Linux | GtkFileChooserNative | `uri` (file://) and `path` |
 | OHOS | DocumentViewPicker.save | `uri` and `path` |
 
 **Example:**
@@ -306,7 +342,13 @@ class PublicSavedFile {
 | Android (dialog) | content:// URI | null |
 | iOS (direct) | null | Full file path |
 | iOS (dialog) | file:// URL | Full file path |
+| macOS | file:// URL | Full file path |
+| Web | null | null (browser-controlled) |
+| Windows | null | Full file path |
+| Linux | file:// URL | Full file path |
 | OHOS | File URI | Converted path |
+
+On Web, `PublicSavedFile.isSuccess` returns `false` even on success because the actual save location is not exposed to JavaScript for privacy reasons. If you only care about whether `saveBytes` was invoked without throwing, treat a non-null return value as success.
 
 ### Utility Methods
 

@@ -1,6 +1,6 @@
 # public_file_saver
 
-一个跨平台的 Flutter 插件，用于将文件保存到公开可见的位置（下载、文档目录）。支持 **Android**、**iOS** 和 **鸿蒙系统 (OHOS)**。
+一个跨平台的 Flutter 插件，用于将文件保存到公开可见的位置（下载、文档目录）。支持 **Android**、**iOS**、**macOS**、**Web**、**Windows**、**Linux** 和 **鸿蒙系统 (OHOS)**。
 
 [![pub package](https://img.shields.io/pub/v/public_file_saver.svg)](https://pub.dev/packages/public_file_saver)
 
@@ -15,17 +15,22 @@
 - ✅ 自动清理非法文件名字符
 - ✅ 自动推断 MIME 类型
 - ✅ 所有平台统一的返回格式
+- ✅ iOS 端支持 Swift Package Manager
 
 ## 平台支持
 
-| 功能 | Android | iOS | 鸿蒙 (OHOS) |
-|------|---------|-----|-------------|
-| `saveBytes()` | ✅ | ✅ | ✅ |
-| `saveBytesWithDialog()` | ✅ | ✅ | ✅ |
-| `saveFile()` | ✅ | ✅ | ✅ |
-| `saveFromUrl()` | ✅ | ✅ | ✅ |
-| `subDir` 参数 | ✅ | ✅ | ❌ |
-| `fileSuffixChoices` 参数 | ❌ | ❌ | ✅ |
+| 功能 | Android | iOS | macOS | Web | Windows | Linux | OHOS |
+|------|---------|-----|-------|-----|---------|-------|------|
+| `saveBytes()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `saveBytesWithDialog()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `saveFile()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
+| `saveFromUrl()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `subDir` 参数 | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| `fileSuffixChoices` 参数 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+¹ Web 端两种模式都会触发浏览器的下载流程，保存位置由浏览器决定（通常是用户配置的下载目录，或者在用户启用"每次询问保存位置"时弹出系统对话框）。返回的 `PublicSavedFile` 只包含 `fileName`。
+
+² Web 端调用 `saveFile(File)` 会抛出 `UnsupportedError`，因为浏览器没有 `dart:io` 的 `File`。请自行读取字节后调用 `saveBytes()`。
 
 ## 安装
 
@@ -33,7 +38,7 @@
 
 ```yaml
 dependencies:
-  public_file_saver: ^1.0.0
+  public_file_saver: ^1.1.0
 ```
 
 然后运行：
@@ -61,6 +66,29 @@ flutter pub get
 <key>LSSupportsOpeningDocumentsInPlace</key>
 <true/>
 ```
+
+### macOS
+
+如果你的应用启用了沙盒（Mac App Store 构建的默认状态），需要在 entitlements 中开启"用户选择的文件读写"权限，对话框模式才能写入沙盒以外的位置：
+
+```xml
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+```
+
+未启用沙盒时无需额外配置。直接保存（无对话框）模式写入 `~/Downloads`；在沙盒环境下，系统会自动重定向到该应用容器内的 Downloads 目录。
+
+### Web
+
+无需额外配置。`saveBytes()` 与 `saveBytesWithDialog()` 都会触发浏览器的标准下载流程，保存位置由浏览器决定。
+
+### Windows
+
+无需额外配置。直接保存模式使用 `FOLDERID_Downloads`（用户标准的下载目录）；对话框模式使用原生 `IFileSaveDialog`。
+
+### Linux
+
+插件依赖 GTK 3，所有 Flutter Linux 应用默认就链接了 GTK，无需额外配置。直接保存模式使用 XDG 的下载目录（`g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)`），未配置 XDG 时回退到 `$HOME`；对话框模式使用 `GtkFileChooserNative`。
 
 ### 鸿蒙系统 (OHOS)
 
@@ -113,6 +141,10 @@ Future<PublicSavedFile?> saveBytes({
 | Android 10+ | MediaStore 下载目录 | `uri`: content:// URI |
 | Android 9- | 公共下载目录 | `path`: 完整文件路径 |
 | iOS | 应用文档目录（可在"文件"应用中查看） | `path`: 完整文件路径 |
+| macOS | `~/Downloads`（沙盒时会被重定向） | `uri` (file://) 和 `path` |
+| Web | 浏览器下载（由浏览器决定位置） | 仅 `fileName` |
+| Windows | `FOLDERID_Downloads` | `path`: 完整文件路径 |
+| Linux | XDG `$HOME/Downloads` | `uri` (file://) 和 `path` |
 | OHOS | 通过 DocumentViewPicker 用户选择 | `uri` 和 `path` |
 
 **示例：**
@@ -164,6 +196,10 @@ Future<PublicSavedFile?> saveBytesWithDialog({
 |------|------------|--------|
 | Android | Storage Access Framework (ACTION_CREATE_DOCUMENT) | `uri`: content:// URI |
 | iOS | UIDocumentPickerViewController | `uri`: file:// URL, `path`: 文件路径 |
+| macOS | NSSavePanel | `uri` (file://) 和 `path` |
+| Web | 浏览器下载（无真正对话框，详见上文说明） | 仅 `fileName` |
+| Windows | IFileSaveDialog (COM) | `path`: 完整文件路径 |
+| Linux | GtkFileChooserNative | `uri` (file://) 和 `path` |
 | OHOS | DocumentViewPicker.save | `uri` 和 `path` |
 
 **示例：**
@@ -306,7 +342,13 @@ class PublicSavedFile {
 | Android (对话框) | content:// URI | null |
 | iOS (直接保存) | null | 完整文件路径 |
 | iOS (对话框) | file:// URL | 完整文件路径 |
+| macOS | file:// URL | 完整文件路径 |
+| Web | null | null（由浏览器控制） |
+| Windows | null | 完整文件路径 |
+| Linux | file:// URL | 完整文件路径 |
 | OHOS | 文件 URI | 转换后的路径 |
+
+Web 端即使保存成功，`PublicSavedFile.isSuccess` 也会返回 `false`，因为出于隐私原因浏览器不会向 JS 暴露实际保存位置。若只关心 `saveBytes` 是否成功触发，把非 null 的返回值当作成功即可。
 
 ### 工具方法
 
