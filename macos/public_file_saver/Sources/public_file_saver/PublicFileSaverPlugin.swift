@@ -35,36 +35,45 @@ public class PublicFileSaverPlugin: NSObject, FlutterPlugin {
 
         let subDir = args["subDir"] as? String
 
-        do {
-            let downloadsURL = try FileManager.default.url(
-                for: .downloadsDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
+        // File I/O can be large (this API is used for downloads); run it off
+        // the main thread so the UI stays responsive.
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let downloadsURL = try FileManager.default.url(
+                    for: .downloadsDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                )
 
-            var targetDir = downloadsURL
-            if let subDir = subDir, !subDir.isEmpty {
-                targetDir = downloadsURL.appendingPathComponent(subDir)
-                try FileManager.default.createDirectory(at: targetDir,
-                                                        withIntermediateDirectories: true,
-                                                        attributes: nil)
+                var targetDir = downloadsURL
+                if let subDir = subDir, !subDir.isEmpty {
+                    targetDir = downloadsURL.appendingPathComponent(subDir)
+                    try FileManager.default.createDirectory(at: targetDir,
+                                                            withIntermediateDirectories: true,
+                                                            attributes: nil)
+                }
+
+                let fileURL = getUniqueFileURL(directory: targetDir, fileName: fileName)
+                try bytes.data.write(to: fileURL, options: .atomic)
+
+                let response: [String: Any?] = [
+                    "fileName": fileURL.lastPathComponent,
+                    "uri": fileURL.absoluteString,
+                    "path": fileURL.path
+                ]
+                DispatchQueue.main.async {
+                    result(response)
+                }
+
+            } catch {
+                let flutterError = FlutterError(code: "SAVE_FAILED",
+                                                message: error.localizedDescription,
+                                                details: nil)
+                DispatchQueue.main.async {
+                    result(flutterError)
+                }
             }
-
-            let fileURL = getUniqueFileURL(directory: targetDir, fileName: fileName)
-            try bytes.data.write(to: fileURL)
-
-            let response: [String: Any?] = [
-                "fileName": fileURL.lastPathComponent,
-                "uri": fileURL.absoluteString,
-                "path": fileURL.path
-            ]
-            result(response)
-
-        } catch {
-            result(FlutterError(code: "SAVE_FAILED",
-                                message: error.localizedDescription,
-                                details: nil))
         }
     }
 
@@ -92,18 +101,25 @@ public class PublicFileSaverPlugin: NSObject, FlutterPlugin {
                     return
                 }
 
-                do {
-                    try bytes.data.write(to: url)
-                    let map: [String: Any?] = [
-                        "fileName": url.lastPathComponent,
-                        "uri": url.absoluteString,
-                        "path": url.path
-                    ]
-                    result(map)
-                } catch {
-                    result(FlutterError(code: "SAVE_FAILED",
-                                        message: error.localizedDescription,
-                                        details: nil))
+                DispatchQueue.global(qos: .utility).async {
+                    do {
+                        try bytes.data.write(to: url, options: .atomic)
+                        let map: [String: Any?] = [
+                            "fileName": url.lastPathComponent,
+                            "uri": url.absoluteString,
+                            "path": url.path
+                        ]
+                        DispatchQueue.main.async {
+                            result(map)
+                        }
+                    } catch {
+                        let flutterError = FlutterError(code: "SAVE_FAILED",
+                                                        message: error.localizedDescription,
+                                                        details: nil)
+                        DispatchQueue.main.async {
+                            result(flutterError)
+                        }
+                    }
                 }
             }
 

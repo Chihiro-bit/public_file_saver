@@ -26,7 +26,12 @@ class PublicSavedFile {
   });
 
   /// Returns true if the save operation was successful.
-  bool get isSuccess => uri != null || path != null;
+  ///
+  /// On Web neither [uri] nor [path] is available (the browser does not
+  /// expose the save location), so a non-empty [fileName] also counts as
+  /// success. Native platforms never return a non-empty [fileName] on
+  /// failure (failures surface as exceptions or `null` results).
+  bool get isSuccess => fileName.isNotEmpty || uri != null || path != null;
 
   /// Creates a PublicSavedFile from a platform result map.
   factory PublicSavedFile.fromMap(Map<dynamic, dynamic> map) {
@@ -63,4 +68,3 @@ class PublicSavedFile {
   @override
   int get hashCode => Object.hash(fileName, uri, path);
 }
-

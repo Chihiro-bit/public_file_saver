@@ -9,7 +9,7 @@ let package = Package(
     .macOS("10.14")
   ],
   products: [
-    .library(name: "public-file-saver", targets: ["public_file_saver"])
+    .library(name: "public_file_saver", targets: ["public_file_saver"])
   ],
   dependencies: [],
   targets: [

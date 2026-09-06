@@ -1,6 +1,6 @@
 # public_file_saver
 
-A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports **Android**, **iOS**, **macOS**, **Web**, **Windows**, **Linux**, and **HarmonyOS (OHOS)**.
+A reliable Flutter plugin for saving bytes, local files, and URL downloads to user-visible locations. It supports both direct saves and native save dialogs across **Android**, **iOS**, **macOS**, **Web**, **Windows**, **Linux**, and **HarmonyOS (OHOS)**.
 
 [![pub package](https://img.shields.io/pub/v/public_file_saver.svg)](https://pub.dev/packages/public_file_saver)
 
@@ -28,7 +28,7 @@ A cross-platform Flutter plugin to save files to publicly visible locations (Dow
 | `subDir` parameter | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `fileSuffixChoices` parameter | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-¹ On Web, both modes trigger a normal browser download; the browser chooses the destination (typically the configured Downloads folder, or it prompts if the user has "ask where to save" enabled). The returned `PublicSavedFile` only carries `fileName`.
+¹ On Web, `saveBytesWithDialog()` uses the native Save As picker in browsers that support the File System Access API (such as Chrome and Edge). Other browsers fall back to a normal download. The returned `PublicSavedFile` only carries `fileName` because browsers do not expose the final path.
 
 ² On Web, calling `saveFile(File)` throws `UnsupportedError` — `dart:io`'s `File` is not available in the browser. Read the bytes yourself and call `saveBytes()` instead.
 
@@ -38,7 +38,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  public_file_saver: ^1.1.0
+  public_file_saver: ^1.2.0
 ```
 
 Then run:
@@ -51,10 +51,11 @@ flutter pub get
 
 ### Android
 
-No additional setup required. The plugin handles permissions automatically:
+The plugin declares the `WRITE_EXTERNAL_STORAGE` permission (limited to Android 9 and below via `android:maxSdkVersion="28"`), so it is merged into your app automatically.
 
 - **Android 10+ (API 29+)**: Uses MediaStore API, no permission needed
-- **Android 9 and below**: Uses public Downloads directory
+- **Android 6.0–9**: The plugin declares the permission, but your app must request it at runtime (e.g. with the [`permission_handler`](https://pub.dev/packages/permission_handler) package) before calling `saveBytes()`
+- **Android 5.1 and below**: Permission is granted automatically at install time
 
 ### iOS
 
@@ -76,11 +77,16 @@ If your app is sandboxed (the default for Mac App Store builds), enable user-sel
 <true/>
 ```
 
-Without the sandbox, no extra entitlements are needed. Direct (no-dialog) `saveBytes` writes to `~/Downloads`; in a sandboxed build, the system redirects this to the per-app container's Downloads folder.
+Without the sandbox, no extra entitlements are needed. Direct (no-dialog) `saveBytes` writes to `~/Downloads`; in a sandboxed build, the system redirects this to the per-app container's Downloads folder unless you add the Downloads folder entitlement to write to the real `~/Downloads`:
+
+```xml
+<key>com.apple.security.files.downloads.read-write</key>
+<true/>
+```
 
 ### Web
 
-No setup required. Both `saveBytes()` and `saveBytesWithDialog()` trigger a standard browser download — the browser decides the destination based on its own settings.
+No setup is required. `saveBytes()` triggers a standard browser download. `saveBytesWithDialog()` opens the native Save As picker when the File System Access API is available (secure contexts and `localhost`); unsupported browsers fall back to a standard download.
 
 ### Windows
 
@@ -121,7 +127,7 @@ Future<PublicSavedFile?> saveBytes({
   required Uint8List bytes,
   required String fileName,
   String mimeType = 'application/octet-stream',
-  String? subDir,  // Android only
+  String? subDir,  // Android, iOS, macOS, Windows, Linux
 })
 ```
 
@@ -132,7 +138,7 @@ Future<PublicSavedFile?> saveBytes({
 | `bytes` | `Uint8List` | Yes | The binary data to save |
 | `fileName` | `String` | Yes | Desired file name (will be sanitized) |
 | `mimeType` | `String` | No | MIME type of the file (default: `application/octet-stream`) |
-| `subDir` | `String?` | No | Subdirectory within Downloads (Android only) |
+| `subDir` | `String?` | No | Subdirectory within the public directory (Android, iOS, macOS, Windows, Linux) |
 
 **Platform Behavior:**
 
@@ -197,7 +203,7 @@ Future<PublicSavedFile?> saveBytesWithDialog({
 | Android | Storage Access Framework (ACTION_CREATE_DOCUMENT) | `uri`: content:// URI |
 | iOS | UIDocumentPickerViewController | `uri`: file:// URL, `path`: file path |
 | macOS | NSSavePanel | `uri` (file://) and `path` |
-| Web | Browser download (no real dialog — see notes above) | `fileName` only |
+| Web | Native Save As picker when supported; otherwise browser download | `fileName` only |
 | Windows | IFileSaveDialog (COM) | `path`: full file path |
 | Linux | GtkFileChooserNative | `uri` (file://) and `path` |
 | OHOS | DocumentViewPicker.save | `uri` and `path` |
@@ -246,7 +252,7 @@ Future<PublicSavedFile?> saveFile({
 | `file` | `File` | Yes | The file to save |
 | `fileName` | `String?` | No | Custom file name (uses original name if not provided) |
 | `mimeType` | `String?` | No | MIME type (inferred from extension if not provided) |
-| `subDir` | `String?` | No | Subdirectory (non-dialog mode, Android only) |
+| `subDir` | `String?` | No | Subdirectory (non-dialog mode, Android, iOS, macOS, Windows, Linux) |
 | `useDialog` | `bool` | No | If true, shows file picker dialog |
 
 **Example:**
@@ -283,6 +289,7 @@ Future<PublicSavedFile?> saveFromUrl({
   String? mimeType,
   String? subDir,
   bool useDialog = false,
+  Duration? timeout,
 })
 ```
 
@@ -293,8 +300,9 @@ Future<PublicSavedFile?> saveFromUrl({
 | `url` | `String` | Yes | HTTP(S) URL to download from |
 | `fileName` | `String?` | No | Custom file name (inferred from URL/headers if not provided) |
 | `mimeType` | `String?` | No | MIME type (inferred from Content-Type header if not provided) |
-| `subDir` | `String?` | No | Subdirectory (non-dialog mode, Android only) |
+| `subDir` | `String?` | No | Subdirectory (non-dialog mode, Android, iOS, macOS, Windows, Linux) |
 | `useDialog` | `bool` | No | If true, shows file picker dialog after download |
+| `timeout` | `Duration?` | No | Timeout for the HTTP request (throws `TimeoutException` when exceeded) |
 
 **Example:**
 
@@ -348,7 +356,7 @@ class PublicSavedFile {
 | Linux | file:// URL | Full file path |
 | OHOS | File URI | Converted path |
 
-On Web, `PublicSavedFile.isSuccess` returns `false` even on success because the actual save location is not exposed to JavaScript for privacy reasons. If you only care about whether `saveBytes` was invoked without throwing, treat a non-null return value as success.
+On Web, `PublicSavedFile.isSuccess` uses the non-empty file name because browsers do not expose the actual save path to JavaScript.
 
 ### Utility Methods
 
@@ -487,4 +495,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Contributing
 
 Contributions are welcome! Please read the contributing guidelines before submitting a PR.
-

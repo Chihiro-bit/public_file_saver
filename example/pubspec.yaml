@@ -4,7 +4,7 @@ description: "Demonstrates how to use the public_file_saver plugin."
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 
 environment:
-  sdk: ^3.7.2
+  sdk: ">=3.6.0 <4.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions

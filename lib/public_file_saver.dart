@@ -1,20 +1,28 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:mime/mime.dart';
 
 import 'public_file_saver_platform_interface.dart';
+import 'src/content_disposition.dart';
 import 'src/io_compat_web.dart' if (dart.library.io) 'src/io_compat.dart';
 import 'src/public_saved_file.dart';
 
 export 'src/public_saved_file.dart';
 
-/// A cross-platform Flutter plugin to save files to publicly visible locations.
+/// Reliably saves bytes, local files, and URL downloads to user-visible
+/// locations across supported platforms.
 ///
-/// Supports Android, iOS, and HarmonyOS (OHOS) with consistent API and return format.
+/// Supports Android, iOS, macOS, Web, Windows, Linux, and HarmonyOS (OHOS)
+/// with consistent API and return format.
 class PublicFileSaver {
   /// Illegal characters for file names that will be replaced.
   static const _illegalFileNameChars = r'\/:*?"<>|';
+
+  /// Conservative UTF-8 byte limit that leaves room below the 255-byte
+  /// component limit used by common file systems.
+  static const _maxFileNameBytes = 240;
 
   /// Sanitize file name by replacing illegal characters with underscore.
   static String sanitizeFileName(String fileName) {
@@ -24,11 +32,69 @@ class PublicFileSaver {
     }
     // Also replace control characters and trim whitespace
     result = result.replaceAll(RegExp(r'[\x00-\x1f]'), '_').trim();
+    // Replace trailing dots/spaces (problematic on Windows and some file systems)
+    result = result.replaceFirst(RegExp(r'[. ]+$'), '_');
     // Ensure file name is not empty
     if (result.isEmpty) {
       result = 'file';
     }
+
+    // Windows reserves these device names even when an extension is present.
+    if (RegExp(
+      r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)',
+      caseSensitive: false,
+    ).hasMatch(result)) {
+      result = '_$result';
+    }
+
+    // File-system component limits are byte-based. Truncate by complete
+    // Unicode scalar values so multi-byte names remain valid UTF-8.
+    if (utf8.encode(result).length > _maxFileNameBytes) {
+      final truncated = StringBuffer();
+      var byteCount = 0;
+      for (final rune in result.runes) {
+        final character = String.fromCharCode(rune);
+        final characterBytes = utf8.encode(character).length;
+        if (byteCount + characterBytes > _maxFileNameBytes) break;
+        truncated.write(character);
+        byteCount += characterBytes;
+      }
+      result = truncated.toString();
+    }
     return result;
+  }
+
+  /// Sanitize a subdirectory path and guard against directory traversal.
+  ///
+  /// Rejects absolute paths and `..` segments (throwing [ArgumentError]),
+  /// sanitizes each remaining segment, and returns `null` for an empty
+  /// result. Returned segments are joined with `/`, which every supported
+  /// platform accepts.
+  static String? sanitizeSubDir(String? subDir) {
+    if (subDir == null) return null;
+    final trimmed = subDir.trim();
+    if (trimmed.isEmpty) return null;
+
+    // Reject absolute paths (Unix, Windows drive letters, UNC).
+    if (trimmed.startsWith('/') ||
+        trimmed.startsWith(r'\') ||
+        RegExp(r'^[A-Za-z]:').hasMatch(trimmed)) {
+      throw ArgumentError.value(
+          subDir, 'subDir', 'Subdirectory must be a relative path');
+    }
+
+    final segments = trimmed
+        .split(RegExp(r'[/\\]+'))
+        .where((segment) => segment.isNotEmpty && segment != '.')
+        .toList();
+    if (segments.any((segment) => segment == '..')) {
+      throw ArgumentError.value(
+          subDir, 'subDir', 'Subdirectory must not contain ".."');
+    }
+    if (segments.isEmpty) return null;
+
+    final sanitized = segments.map(sanitizeFileName).join('/');
+    return sanitized.isEmpty ? null : sanitized;
   }
 
   /// Save bytes to a public visible location (no dialog).
@@ -36,12 +102,17 @@ class PublicFileSaver {
   /// - **Android 10+**: Uses MediaStore.Downloads, returns content:// URI.
   /// - **Android 9-**: Writes to public Downloads directory, returns file path.
   /// - **iOS**: Writes to app Documents directory (visible in Files app), returns path.
+  /// - **macOS**: Writes to ~/Downloads (sandbox-redirected in sandboxed apps).
+  /// - **Web**: Triggers a browser download, returns the file name only.
+  /// - **Windows**: Writes to the user's Downloads folder, returns path.
+  /// - **Linux**: Writes to the XDG Downloads directory, returns URI and path.
   /// - **OHOS**: Uses DocumentViewPicker in DOWNLOAD mode, returns URI and path.
   ///
   /// [bytes] - The binary data to save.
   /// [fileName] - The desired file name (will be sanitized).
   /// [mimeType] - The MIME type of the file.
-  /// [subDir] - Optional subdirectory within Downloads (Android only).
+  /// [subDir] - Optional subdirectory within the public directory
+  /// (Android, iOS, macOS, Windows, Linux).
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
   Future<PublicSavedFile?> saveBytes({
@@ -55,7 +126,7 @@ class PublicFileSaver {
       bytes: bytes,
       fileName: sanitizedName,
       mimeType: mimeType,
-      subDir: subDir,
+      subDir: sanitizeSubDir(subDir),
     );
   }
 
@@ -95,7 +166,7 @@ class PublicFileSaver {
   /// [file] - The file to save.
   /// [fileName] - Optional custom file name (uses file.path basename if not provided).
   /// [mimeType] - Optional MIME type (inferred from extension if not provided).
-  /// [subDir] - Optional subdirectory (non-dialog mode only).
+  /// [subDir] - Optional subdirectory (non-dialog mode only, not supported on Web/OHOS).
   /// [useDialog] - If true, shows file picker dialog.
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
@@ -135,8 +206,10 @@ class PublicFileSaver {
   /// [url] - The HTTP(S) URL to download from.
   /// [fileName] - Optional custom file name (inferred from URL/headers if not provided).
   /// [mimeType] - Optional MIME type (inferred from Content-Type header if not provided).
-  /// [subDir] - Optional subdirectory (non-dialog mode only).
+  /// [subDir] - Optional subdirectory (non-dialog mode only, not supported on Web/OHOS).
   /// [useDialog] - If true, shows file picker dialog.
+  /// [timeout] - Optional timeout for the HTTP request. When the request
+  /// exceeds this duration a [TimeoutException] is thrown.
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
   /// Throws exception on network error.
@@ -146,33 +219,47 @@ class PublicFileSaver {
     String? mimeType,
     String? subDir,
     bool useDialog = false,
+    Duration? timeout,
   }) async {
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode != 200) {
-      throw Exception('Failed to download file: HTTP ${response.statusCode}');
-    }
-
-    final bytes = response.bodyBytes;
-
-    // Infer file name from Content-Disposition or URL
-    String name = fileName ?? _inferFileNameFromResponse(response, url);
-
-    // Infer MIME type from Content-Type header or file extension
-    String mime = mimeType ?? _inferMimeType(response, name);
+    final request = http.get(Uri.parse(url));
+    final responseFuture = timeout == null ? request : request.timeout(timeout);
 
     if (useDialog) {
-      return saveBytesWithDialog(
-        bytes: bytes,
-        fileName: name,
-        mimeType: mime,
+      // Web must open showSaveFilePicker during the original click gesture;
+      // waiting for the HTTP response first would consume that activation.
+      final suggestedName = sanitizeFileName(
+        fileName ?? _inferFileNameFromUrl(url),
       );
-    } else {
-      return saveBytes(
-        bytes: bytes,
-        fileName: name,
-        mimeType: mime,
-        subDir: subDir,
+      final data = responseFuture.then((response) {
+        _ensureSuccessfulResponse(response);
+        final name = fileName ?? _inferFileNameFromResponse(response, url);
+        return PublicFileSaveData(
+          bytes: response.bodyBytes,
+          fileName: sanitizeFileName(name),
+          mimeType: mimeType ?? _inferMimeType(response, name),
+        );
+      });
+      return PublicFileSaverPlatform.instance.saveBytesWithDialogDeferred(
+        data: data,
+        suggestedFileName: suggestedName,
       );
+    }
+
+    final response = await responseFuture;
+    _ensureSuccessfulResponse(response);
+    final name = fileName ?? _inferFileNameFromResponse(response, url);
+    final mime = mimeType ?? _inferMimeType(response, name);
+    return saveBytes(
+      bytes: response.bodyBytes,
+      fileName: name,
+      mimeType: mime,
+      subDir: subDir,
+    );
+  }
+
+  void _ensureSuccessfulResponse(http.Response response) {
+    if (response.statusCode != 200) {
+      throw Exception('Failed to download file: HTTP ${response.statusCode}');
     }
   }
 
@@ -181,16 +268,15 @@ class PublicFileSaver {
     // Try Content-Disposition header first
     final contentDisposition = response.headers['content-disposition'];
     if (contentDisposition != null) {
-      // Parse filename from Content-Disposition: attachment; filename="example.pdf"
-      final regex = RegExp(r"filename[*]?=[" "\"'" r"]?([^" "\"';" r"\s]+)[" "\"'" r"]?", caseSensitive: false);
-      final match = regex.firstMatch(contentDisposition);
-      if (match != null && match.group(1) != null) {
-        final name = Uri.decodeComponent(match.group(1)!);
-        if (name.isNotEmpty) return name;
-      }
+      final name = parseContentDispositionFileName(contentDisposition);
+      if (name != null && name.isNotEmpty) return name;
     }
 
     // Fallback to URL path segment
+    return _inferFileNameFromUrl(url);
+  }
+
+  String _inferFileNameFromUrl(String url) {
     final uri = Uri.parse(url);
     if (uri.pathSegments.isNotEmpty) {
       final lastSegment = uri.pathSegments.last;
