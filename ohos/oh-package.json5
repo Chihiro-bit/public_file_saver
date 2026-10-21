@@ -1,7 +1,7 @@
 {
   "name": "public_file_saver",
   "version": "1.0.0",
-  "description": "A cross-platform Flutter plugin to save files to publicly visible locations.",
+  "description": "A reliable Flutter plugin for saving files to user-visible locations.",
   "main": "index.ets",
   "author": "",
   "license": "Apache-2.0",

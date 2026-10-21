@@ -1,6 +1,5 @@
 import Flutter
 import UIKit
-import UniformTypeIdentifiers
 
 public class PublicFileSaverPlugin: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
 
@@ -39,36 +38,45 @@ public class PublicFileSaverPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
 
         let subDir = args["subDir"] as? String
 
-        do {
-            let documentsURL = try FileManager.default.url(
-                for: .documentDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
+        // File I/O can be large (this API is used for downloads); run it off
+        // the main thread so the UI stays responsive.
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let documentsURL = try FileManager.default.url(
+                    for: .documentDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                )
 
-            var targetDir = documentsURL
-            if let subDir = subDir, !subDir.isEmpty {
-                targetDir = documentsURL.appendingPathComponent(subDir)
-                try FileManager.default.createDirectory(at: targetDir,
-                                                       withIntermediateDirectories: true,
-                                                       attributes: nil)
+                var targetDir = documentsURL
+                if let subDir = subDir, !subDir.isEmpty {
+                    targetDir = documentsURL.appendingPathComponent(subDir)
+                    try FileManager.default.createDirectory(at: targetDir,
+                                                           withIntermediateDirectories: true,
+                                                           attributes: nil)
+                }
+
+                let fileURL = getUniqueFileURL(directory: targetDir, fileName: fileName)
+                try bytes.data.write(to: fileURL, options: .atomic)
+
+                let response: [String: Any?] = [
+                    "fileName": fileURL.lastPathComponent,
+                    "uri": nil,
+                    "path": fileURL.path
+                ]
+                DispatchQueue.main.async {
+                    result(response)
+                }
+
+            } catch {
+                let flutterError = FlutterError(code: "SAVE_FAILED",
+                                                message: error.localizedDescription,
+                                                details: nil)
+                DispatchQueue.main.async {
+                    result(flutterError)
+                }
             }
-
-            let fileURL = getUniqueFileURL(directory: targetDir, fileName: fileName)
-            try bytes.data.write(to: fileURL)
-
-            let response: [String: Any?] = [
-                "fileName": fileURL.lastPathComponent,
-                "uri": nil,
-                "path": fileURL.path
-            ]
-            result(response)
-
-        } catch {
-            result(FlutterError(code: "SAVE_FAILED",
-                               message: error.localizedDescription,
-                               details: nil))
         }
     }
 
@@ -89,7 +97,7 @@ public class PublicFileSaverPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
         let tempURL = tempDir.appendingPathComponent(fileName)
 
         do {
-            try bytes.data.write(to: tempURL)
+            try bytes.data.write(to: tempURL, options: .atomic)
         } catch {
             result(FlutterError(code: "TEMP_FILE_FAILED",
                                message: "Failed to create temp file: \(error.localizedDescription)",

@@ -1,6 +1,6 @@
 # public_file_saver
 
-一个跨平台的 Flutter 插件，用于将文件保存到公开可见的位置（下载、文档目录）。支持 **Android**、**iOS**、**macOS**、**Web**、**Windows**、**Linux** 和 **鸿蒙系统 (OHOS)**。
+一个可靠的 Flutter 文件保存插件，支持将字节数据、本地文件和网络下载保存到用户可见位置，并提供直接保存与系统保存对话框。适用于 **Android**、**iOS**、**macOS**、**Web**、**Windows**、**Linux** 和 **鸿蒙系统 (OHOS)**。
 
 [![pub package](https://img.shields.io/pub/v/public_file_saver.svg)](https://pub.dev/packages/public_file_saver)
 
@@ -32,7 +32,7 @@
 | `subDir` 参数 | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `fileSuffixChoices` 参数 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-¹ Web 端两种模式都会触发浏览器的下载流程，保存位置由浏览器决定（通常是用户配置的下载目录，或者在用户启用"每次询问保存位置"时弹出系统对话框）。返回的 `PublicSavedFile` 只包含 `fileName`。
+¹ Web 端在支持 File System Access API 的浏览器（如 Chrome、Edge）中，`saveBytesWithDialog()` 会打开原生“另存为”对话框；其他浏览器回退为普通下载。浏览器不会暴露最终路径，因此返回的 `PublicSavedFile` 只包含 `fileName`。
 
 ² Web 端调用 `saveFile(File)` 会抛出 `UnsupportedError`，因为浏览器没有 `dart:io` 的 `File`。请自行读取字节后调用 `saveBytes()`。
 
@@ -42,7 +42,7 @@
 
 ```yaml
 dependencies:
-  public_file_saver: ^1.1.0
+  public_file_saver: ^1.2.0
 ```
 
 然后运行：
@@ -55,10 +55,11 @@ flutter pub get
 
 ### Android
 
-无需额外配置。插件自动处理权限：
+插件已声明 `WRITE_EXTERNAL_STORAGE` 权限（通过 `android:maxSdkVersion="28"` 仅作用于 Android 9 及以下），会自动合并到你的应用中。
 
 - **Android 10+ (API 29+)**：使用 MediaStore API，无需权限
-- **Android 9 及以下**：使用公共下载目录
+- **Android 6.0–9**：插件已声明权限，但应用需要在调用 `saveBytes()` 前自行申请运行时权限（例如使用 [`permission_handler`](https://pub.dev/packages/permission_handler)）
+- **Android 5.1 及以下**：安装时自动授予权限
 
 ### iOS
 
@@ -80,11 +81,16 @@ flutter pub get
 <true/>
 ```
 
-未启用沙盒时无需额外配置。直接保存（无对话框）模式写入 `~/Downloads`；在沙盒环境下，系统会自动重定向到该应用容器内的 Downloads 目录。
+未启用沙盒时无需额外配置。直接保存（无对话框）模式写入 `~/Downloads`；在沙盒环境下，系统会自动重定向到该应用容器内的 Downloads 目录，除非添加以下 entitlement 以写入真实的 `~/Downloads`：
+
+```xml
+<key>com.apple.security.files.downloads.read-write</key>
+<true/>
+```
 
 ### Web
 
-无需额外配置。`saveBytes()` 与 `saveBytesWithDialog()` 都会触发浏览器的标准下载流程，保存位置由浏览器决定。
+无需额外配置。`saveBytes()` 触发浏览器的标准下载；`saveBytesWithDialog()` 在安全上下文或 `localhost` 中优先打开原生“另存为”对话框，不支持 File System Access API 的浏览器会回退为普通下载。
 
 ### Windows
 
@@ -125,7 +131,7 @@ Future<PublicSavedFile?> saveBytes({
   required Uint8List bytes,
   required String fileName,
   String mimeType = 'application/octet-stream',
-  String? subDir,  // 仅 Android 支持
+  String? subDir,  // Android、iOS、macOS、Windows、Linux
 })
 ```
 
@@ -136,7 +142,7 @@ Future<PublicSavedFile?> saveBytes({
 | `bytes` | `Uint8List` | 是 | 要保存的二进制数据 |
 | `fileName` | `String` | 是 | 期望的文件名（会自动清理非法字符） |
 | `mimeType` | `String` | 否 | 文件的 MIME 类型（默认：`application/octet-stream`） |
-| `subDir` | `String?` | 否 | 下载目录内的子目录（仅 Android 支持） |
+| `subDir` | `String?` | 否 | 公共目录内的子目录（Android、iOS、macOS、Windows、Linux） |
 
 **各平台行为：**
 
@@ -201,7 +207,7 @@ Future<PublicSavedFile?> saveBytesWithDialog({
 | Android | Storage Access Framework (ACTION_CREATE_DOCUMENT) | `uri`: content:// URI |
 | iOS | UIDocumentPickerViewController | `uri`: file:// URL, `path`: 文件路径 |
 | macOS | NSSavePanel | `uri` (file://) 和 `path` |
-| Web | 浏览器下载（无真正对话框，详见上文说明） | 仅 `fileName` |
+| Web | 支持时使用原生“另存为”对话框，否则浏览器下载 | 仅 `fileName` |
 | Windows | IFileSaveDialog (COM) | `path`: 完整文件路径 |
 | Linux | GtkFileChooserNative | `uri` (file://) 和 `path` |
 | OHOS | DocumentViewPicker.save | `uri` 和 `path` |
@@ -250,7 +256,7 @@ Future<PublicSavedFile?> saveFile({
 | `file` | `File` | 是 | 要保存的文件 |
 | `fileName` | `String?` | 否 | 自定义文件名（不提供则使用原文件名） |
 | `mimeType` | `String?` | 否 | MIME 类型（不提供则从扩展名推断） |
-| `subDir` | `String?` | 否 | 子目录（非对话框模式，仅 Android 支持） |
+| `subDir` | `String?` | 否 | 子目录（非对话框模式，Android、iOS、macOS、Windows、Linux） |
 | `useDialog` | `bool` | 否 | 如果为 true，显示文件选择器对话框 |
 
 **示例：**
@@ -287,6 +293,7 @@ Future<PublicSavedFile?> saveFromUrl({
   String? mimeType,
   String? subDir,
   bool useDialog = false,
+  Duration? timeout,
 })
 ```
 
@@ -297,8 +304,9 @@ Future<PublicSavedFile?> saveFromUrl({
 | `url` | `String` | 是 | 要下载的 HTTP(S) URL |
 | `fileName` | `String?` | 否 | 自定义文件名（不提供则从 URL/响应头推断） |
 | `mimeType` | `String?` | 否 | MIME 类型（不提供则从 Content-Type 响应头推断） |
-| `subDir` | `String?` | 否 | 子目录（非对话框模式，仅 Android 支持） |
+| `subDir` | `String?` | 否 | 子目录（非对话框模式，Android、iOS、macOS、Windows、Linux） |
 | `useDialog` | `bool` | 否 | 如果为 true，下载后显示文件选择器对话框 |
+| `timeout` | `Duration?` | 否 | HTTP 请求超时时间（超时抛出 `TimeoutException`） |
 
 **示例：**
 
@@ -458,7 +466,7 @@ class PublicSavedFile {
 | Linux | file:// URL | 完整文件路径 |
 | OHOS | 文件 URI | 转换后的路径 |
 
-Web 端即使保存成功，`PublicSavedFile.isSuccess` 也会返回 `false`，因为出于隐私原因浏览器不会向 JS 暴露实际保存位置。若只关心 `saveBytes` 是否成功触发，把非 null 的返回值当作成功即可。
+Web 端由于浏览器不会向 JavaScript 暴露实际保存路径，`PublicSavedFile.isSuccess` 会改用非空文件名判断保存是否成功。
 
 ### 工具方法
 
@@ -597,4 +605,3 @@ MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 ## 贡献
 
 欢迎贡献！请在提交 PR 前阅读贡献指南。
-

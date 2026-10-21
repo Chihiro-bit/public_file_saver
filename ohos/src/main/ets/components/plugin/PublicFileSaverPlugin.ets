@@ -120,8 +120,9 @@ export default class PublicFileSaverPlugin implements FlutterPlugin, MethodCallH
       }
 
       const dirUri: string = uris[0];
-      const dstUri: string = `${dirUri}/${fileName}`;
+      const dstUri: string = this.getUniqueUri(dirUri, fileName);
       const dstPath: string = new fileuri.FileUri(dstUri).path;
+      const savedFileName: string = dstUri.substring(dstUri.lastIndexOf('/') + 1);
 
       // Write bytes to file
       const dstFile = fs.openSync(dstUri, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
@@ -129,7 +130,7 @@ export default class PublicFileSaverPlugin implements FlutterPlugin, MethodCallH
       fs.closeSync(dstFile);
 
       const response: Record<string, string | null> = {
-        'fileName': fileName,
+        'fileName': savedFileName,
         'uri': dstUri,
         'path': dstPath
       };
@@ -229,8 +230,9 @@ export default class PublicFileSaverPlugin implements FlutterPlugin, MethodCallH
       }
 
       const dirUri: string = uris[0];
-      const dstUri: string = `${dirUri}/${fileName}`;
+      const dstUri: string = this.getUniqueUri(dirUri, fileName);
       const dstPath: string = new fileuri.FileUri(dstUri).path;
+      const savedFileName: string = dstUri.substring(dstUri.lastIndexOf('/') + 1);
 
       const srcFile = fs.openSync(cachePath, fs.OpenMode.READ_ONLY);
       const dstFile = fs.openSync(dstUri, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
@@ -240,7 +242,7 @@ export default class PublicFileSaverPlugin implements FlutterPlugin, MethodCallH
 
       // Return in new format for consistency
       const response: Record<string, string | null> = {
-        'fileName': fileName,
+        'fileName': savedFileName,
         'uri': dstUri,
         'path': dstPath
       };
@@ -317,6 +319,40 @@ export default class PublicFileSaverPlugin implements FlutterPlugin, MethodCallH
       return new fileuri.FileUri(input).path;
     }
     return input;
+  }
+
+  /**
+   * Return a non-colliding file URI inside `dirUri` by appending (1), (2), ...
+   * before the extension when the target already exists. Mirrors the
+   * unique-name behavior of the Android and iOS implementations so that
+   * re-saving the same file name never silently overwrites a previous save.
+   */
+  private getUniqueUri(dirUri: string, fileName: string): string {
+    const candidate = `${dirUri}/${fileName}`;
+    if (!this.fileExists(candidate)) {
+      return candidate;
+    }
+
+    const dotIndex = fileName.lastIndexOf('.');
+    const baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    const ext = dotIndex > 0 ? fileName.substring(dotIndex) : '';
+
+    let counter = 1;
+    while (true) {
+      const next = `${dirUri}/${baseName}(${counter})${ext}`;
+      if (!this.fileExists(next)) {
+        return next;
+      }
+      counter++;
+    }
+  }
+
+  private fileExists(uri: string): boolean {
+    try {
+      return fs.accessSync(uri);
+    } catch (e) {
+      return false;
+    }
   }
 }
 

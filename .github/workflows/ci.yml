@@ -1,0 +1,138 @@
+# CI for public_file_saver
+#
+# - analyze-and-test: static analysis + unit/widget tests (OS-independent)
+# - build-android:     compiles the example APK (validates the Kotlin plugin)
+# - build-linux:       compiles the Linux example (validates the C++/GTK plugin)
+# - build-web:         compiles the web example (validates dart2js + conditional imports)
+# - build-windows:     compiles the Windows example (validates the C++/COM plugin)
+# - build-macos-ios:   compiles macOS + iOS (validates the Swift plugins,
+#                      the podspec layout, and — best-effort — the SPM path)
+#
+# All jobs run in parallel. The OHOS implementation requires the HarmonyOS
+# toolchain and cannot be built on GitHub-hosted runners.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Pub get (package)
+        run: flutter pub get
+      - name: Analyze (package)
+        run: flutter analyze
+      - name: Unit tests (package)
+        run: flutter test
+
+      - name: Pub get (example)
+        working-directory: example
+        run: flutter pub get
+      - name: Analyze (example)
+        working-directory: example
+        run: flutter analyze
+      - name: Widget tests (example)
+        working-directory: example
+        run: flutter test
+
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build debug APK
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter build apk --debug
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install GTK build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev
+      - name: Build debug bundle
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter build linux --debug
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build release bundle (dart2js)
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter build web --release
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build debug executable
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter build windows --debug
+
+  build-macos-ios:
+    name: Build macOS + iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build macOS debug
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter build macos --debug
+      - name: Build iOS (CocoaPods, no codesign)
+        working-directory: example
+        run: flutter build ios --debug --no-codesign
+      - name: Build iOS via Swift Package Manager (experimental canary)
+        working-directory: example
+        continue-on-error: true
+        run: |
+          flutter config --enable-swift-package-manager
+          flutter build ios --debug --no-codesign
