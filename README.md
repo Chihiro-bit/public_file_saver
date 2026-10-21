@@ -12,6 +12,7 @@ A cross-platform Flutter plugin to save files to publicly visible locations (Dow
 - ✅ Save with system file picker dialog
 - ✅ Save local files
 - ✅ Download and save files from URL
+- ✅ Batch save many files in one call, with per-item results and progress
 - ✅ Automatic file name sanitization
 - ✅ MIME type inference
 - ✅ Consistent return format across all platforms
@@ -25,6 +26,9 @@ A cross-platform Flutter plugin to save files to publicly visible locations (Dow
 | `saveBytesWithDialog()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
 | `saveFile()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
 | `saveFromUrl()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveBytes()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveFiles()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveFromUrls()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
 | `subDir` parameter | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `fileSuffixChoices` parameter | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
@@ -316,6 +320,117 @@ if (result != null && result.isSuccess) {
   print('Downloaded and saved: ${result.fileName}');
 }
 ```
+
+---
+
+### Batch Saving: `PublicFileSaverBatch`
+
+Saves many files in one call. This is a **standalone class** — it does not change
+or wrap `PublicFileSaver`, and the single-file API above is untouched.
+
+```dart
+import 'package:public_file_saver/public_file_saver.dart';
+
+const batch = PublicFileSaverBatch();
+```
+
+#### No dialog, by design
+
+Batch methods always save directly to the public Downloads / Documents location.
+There is deliberately **no batched equivalent of `saveBytesWithDialog()`**: on
+Android, macOS, Windows, and Linux the native save dialog handles exactly one
+file, so a batch would have to show one dialog per file. When you want the user
+to pick a location, use `saveBytesWithDialog()` for a single file.
+
+#### Ordering and memory
+
+Items are saved strictly one at a time, in list order. This is required for
+correctness: the native "find a non-colliding name" logic checks for an existing
+file and then writes it, so concurrent saves of same-named files could resolve to
+the same target and overwrite each other.
+
+Sequential processing also bounds memory — `saveFiles()` and `saveFromUrls()`
+read or download one item at a time, so a batch of large files never holds more
+than a single file's bytes in memory.
+
+#### `saveBytes()`
+
+```dart
+final result = await batch.saveBytes(
+  files: [
+    FileToSave(bytes: pdfBytes, fileName: 'invoice.pdf', mimeType: 'application/pdf'),
+    FileToSave(bytes: pngBytes, fileName: 'chart.png', mimeType: 'image/png'),
+  ],
+  subDir: 'MyApp',
+  onProgress: (done, total) => print('$done / $total'),
+);
+
+print('${result.succeeded.length} saved, ${result.failed.length} failed');
+```
+
+#### `saveFiles()`
+
+```dart
+final result = await batch.saveFiles(
+  files: [
+    LocalFileToSave(File('/path/to/a.pdf')),
+    LocalFileToSave(File('/path/to/b.bin'), fileName: 'renamed.pdf'),
+  ],
+);
+```
+
+#### `saveFromUrls()`
+
+```dart
+final result = await batch.saveFromUrls(
+  urls: [
+    UrlToSave('https://example.com/a.pdf'),
+    UrlToSave('https://example.com/download?id=7', fileName: 'report.pdf'),
+  ],
+);
+```
+
+#### Parameters
+
+Shared by all three batch methods:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `files` / `urls` | `List<FileToSave>` / `List<LocalFileToSave>` / `List<UrlToSave>` | Yes | The items to save, in order |
+| `subDir` | `String?` | No | Subdirectory within Downloads (ignored on Web and OHOS) |
+| `continueOnError` | `bool` | No | `true` (default) records a failure and moves on; `false` stops at the first failure |
+| `onProgress` | `void Function(int completed, int total)?` | No | Called after every attempted item |
+
+`PublicFileSaverBatch` also takes an optional `httpClient` used by
+`saveFromUrls()`, for connection reuse or for injecting a mock in tests. A
+client you pass in is never closed by the batch.
+
+#### Return Type: `BatchSaveResult`
+
+A batch **never throws because one item failed**. Every item lands in
+`succeeded` or `failed`, so a failure in the middle never discards the files
+already written.
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `succeeded` | `List<PublicSavedFile>` | Files written, in save order (unmodifiable) |
+| `failed` | `List<BatchSaveFailure>` | Items that failed, with `index`, `fileName`, `error`, `stackTrace` |
+| `totalRequested` | `int` | How many items were requested |
+| `processedCount` | `int` | How many items were attempted |
+| `skippedCount` | `int` | Never attempted; non-zero only with `continueOnError: false` |
+| `isCompleteSuccess` | `bool` | True when every requested item was saved |
+| `hasFailures` | `bool` | True when at least one item failed |
+
+```dart
+if (result.hasFailures) {
+  for (final failure in result.failed) {
+    print('[${failure.index}] ${failure.fileName}: ${failure.error}');
+  }
+}
+```
+
+> **Web:** `saveFiles()` is not supported (reading a `File` throws there), so
+> every item is reported as a failure. Use `saveBytes()` on Web instead.
 
 ---
 

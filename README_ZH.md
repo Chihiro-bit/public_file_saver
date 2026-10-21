@@ -12,6 +12,7 @@
 - ✅ 通过系统文件选择器对话框保存
 - ✅ 保存本地文件
 - ✅ 从 URL 下载并保存文件
+- ✅ 一次调用批量保存多个文件，逐项返回结果并支持进度回调
 - ✅ 自动清理非法文件名字符
 - ✅ 自动推断 MIME 类型
 - ✅ 所有平台统一的返回格式
@@ -25,6 +26,9 @@
 | `saveBytesWithDialog()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
 | `saveFile()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
 | `saveFromUrl()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveBytes()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveFiles()` | ✅ | ✅ | ✅ | ❌² | ✅ | ✅ | ✅ |
+| `PublicFileSaverBatch.saveFromUrls()` | ✅ | ✅ | ✅ | ✅¹ | ✅ | ✅ | ✅ |
 | `subDir` 参数 | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | `fileSuffixChoices` 参数 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
@@ -316,6 +320,112 @@ if (result != null && result.isSuccess) {
   print('下载并保存成功: ${result.fileName}');
 }
 ```
+
+---
+
+### 批量保存：`PublicFileSaverBatch`
+
+一次调用保存多个文件。这是一个**完全独立的类**——它不修改也不包装
+`PublicFileSaver`，上面的单文件 API 保持原样。
+
+```dart
+import 'package:public_file_saver/public_file_saver.dart';
+
+const batch = PublicFileSaverBatch();
+```
+
+#### 设计上不弹对话框
+
+批量方法一律直接保存到公开的下载 / 文档目录。这里**刻意没有提供
+`saveBytesWithDialog()` 的批量版本**：Android、macOS、Windows、Linux 的系统保存
+对话框一次只能处理一个文件，批量就意味着弹 N 次框。需要让用户选择位置时，请对
+单个文件使用 `saveBytesWithDialog()`。
+
+#### 顺序与内存
+
+所有条目严格按列表顺序**逐个**保存。这是正确性要求，不只是为了稳妥：原生端的
+"查找不冲突文件名"逻辑是先检查文件是否存在再写入，并发保存同名文件可能算出同一个
+目标路径并互相覆盖。
+
+串行处理同时也控制了内存占用——`saveFiles()` 和 `saveFromUrls()` 每次只读取 /
+下载一个条目，因此批量处理大文件时，内存中始终只有一个文件的字节。
+
+#### `saveBytes()`
+
+```dart
+final result = await batch.saveBytes(
+  files: [
+    FileToSave(bytes: pdfBytes, fileName: '发票.pdf', mimeType: 'application/pdf'),
+    FileToSave(bytes: pngBytes, fileName: '图表.png', mimeType: 'image/png'),
+  ],
+  subDir: 'MyApp',
+  onProgress: (done, total) => print('$done / $total'),
+);
+
+print('成功 ${result.succeeded.length} 个，失败 ${result.failed.length} 个');
+```
+
+#### `saveFiles()`
+
+```dart
+final result = await batch.saveFiles(
+  files: [
+    LocalFileToSave(File('/path/to/a.pdf')),
+    LocalFileToSave(File('/path/to/b.bin'), fileName: '重命名.pdf'),
+  ],
+);
+```
+
+#### `saveFromUrls()`
+
+```dart
+final result = await batch.saveFromUrls(
+  urls: [
+    UrlToSave('https://example.com/a.pdf'),
+    UrlToSave('https://example.com/download?id=7', fileName: '报表.pdf'),
+  ],
+);
+```
+
+#### 参数
+
+三个批量方法共用：
+
+| 参数 | 类型 | 必需 | 描述 |
+|------|------|------|------|
+| `files` / `urls` | `List<FileToSave>` / `List<LocalFileToSave>` / `List<UrlToSave>` | 是 | 要保存的条目，按顺序处理 |
+| `subDir` | `String?` | 否 | 下载目录内的子目录（Web 和 OHOS 忽略） |
+| `continueOnError` | `bool` | 否 | `true`（默认）记录失败并继续；`false` 在第一个失败处停止 |
+| `onProgress` | `void Function(int completed, int total)?` | 否 | 每尝试完一个条目回调一次 |
+
+`PublicFileSaverBatch` 还接受可选的 `httpClient`，供 `saveFromUrls()` 复用连接或
+在测试中注入 mock。你传入的 client 不会被批量方法关闭。
+
+#### 返回类型：`BatchSaveResult`
+
+批量方法**不会因为某一项失败而抛异常**。每个条目最终都会落在 `succeeded` 或
+`failed` 中，中途失败不会丢掉已经保存成功的文件。
+
+| 成员 | 类型 | 描述 |
+|------|------|------|
+| `succeeded` | `List<PublicSavedFile>` | 已写入的文件，按保存顺序（不可修改） |
+| `failed` | `List<BatchSaveFailure>` | 失败的条目，含 `index`、`fileName`、`error`、`stackTrace` |
+| `totalRequested` | `int` | 请求保存的条目总数 |
+| `processedCount` | `int` | 实际尝试过的条目数 |
+| `skippedCount` | `int` | 未被尝试的条目数；仅在 `continueOnError: false` 时可能非零 |
+| `isCompleteSuccess` | `bool` | 所有请求的条目都保存成功时为 true |
+| `hasFailures` | `bool` | 至少有一个条目失败时为 true |
+
+```dart
+if (result.hasFailures) {
+  for (final failure in result.failed) {
+    print('[${failure.index}] ${failure.fileName}: ${failure.error}');
+  }
+}
+```
+
+> **Web 平台：** 不支持 `saveFiles()`（在 Web 上读取 `File` 会抛异常），所有条目
+> 都会被记为失败。Web 上请改用 `saveBytes()`。
 
 ---
 
