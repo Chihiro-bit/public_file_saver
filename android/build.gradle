@@ -22,7 +22,14 @@ allprojects {
 }
 
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
+
+// AGP 9+ with built-in Kotlin (android.builtInKotlin=true, the default) registers the
+// `kotlin` extension itself; applying KGP on top of it is deprecated by Flutter.
+// Older toolchains (AGP < 9, or AGP 9 with built-in Kotlin disabled) still need KGP.
+def usesBuiltInKotlin = project.extensions.findByName("kotlin") != null
+if (!usesBuiltInKotlin) {
+    apply plugin: "kotlin-android"
+}
 
 android {
     namespace = "com.example.public_file_saver"
@@ -32,10 +39,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11
     }
 
     sourceSets {
@@ -61,6 +64,22 @@ android {
                outputs.upToDateWhen {false}
                showStandardStreams = true
             }
+        }
+    }
+}
+
+// `kotlin.compilerOptions` requires KGP 2.0+ (always true with built-in Kotlin);
+// fall back to the legacy `android.kotlinOptions` for apps still on KGP 1.x.
+if (kotlin.hasProperty("compilerOptions")) {
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
+    }
+} else {
+    android {
+        kotlinOptions {
+            jvmTarget = JavaVersion.VERSION_11
         }
     }
 }

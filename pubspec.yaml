@@ -1,5 +1,7 @@
 name: public_file_saver
-description: "A reliable Flutter plugin for saving bytes, local files, and URL downloads to user-visible locations with direct-save and native-dialog support."
+fix/agp9-built-in-kotlin
+description: "A cross-platform Flutter plugin to save files to publicly visible locations (Downloads, Documents). Supports Android, iOS, macOS, Web, Windows, Linux, and HarmonyOS."
+
 version: 1.2.0
 homepage: https://github.com/Chihiro-bit/public_file_saver
 repository: https://github.com/Chihiro-bit/public_file_saver
