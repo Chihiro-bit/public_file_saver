@@ -603,6 +603,25 @@ try {
 }
 ```
 
+## Download release examples
+
+Open GitHub **Actions → Example release builds → Run workflow** and select a branch.
+The workflow also runs when a `v*` tag is pushed. Download the platform-specific
+packages from **Artifacts** on the completed run; artifacts expire after 30 days.
+
+| Platform | Artifact |
+| --- | --- |
+| Android | Release APKs for each ABI, signed with the example debug key |
+| Web | Compressed site files; extract and serve over HTTP |
+| Linux x64 | Complete release bundle, including libraries |
+| Windows x64 | ZIP containing the executable and all runtime files |
+| macOS arm64 | Unsigned, non-notarized `.app` in a ZIP |
+| iOS | Unsigned release `Runner.app` in a tar archive; sign before installing on a device |
+
+These are demo builds, not store distribution packages. Keep desktop runtime files
+together. OHOS requires a separate HarmonyOS toolchain and is not built here.
+Each artifact includes the source commit and Flutter version in `BUILD-INFO.txt`.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.

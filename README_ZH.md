@@ -598,6 +598,24 @@ try {
 }
 ```
 
+## 下载 Release 示例
+
+在 GitHub 打开 **Actions → Example release builds → Run workflow**，选择分支运行。
+推送 `v*` 标签也会触发构建。在运行结果页的 **Artifacts** 下载产物，保留时间为 30 天。
+
+| 平台 | 产物 |
+| --- | --- |
+| Android | 各 ABI 的 release APK，使用示例项目的 debug 密钥签名 |
+| Web | 网站压缩包，解压后通过 HTTP 服务器访问 |
+| Linux x64 | 包含依赖库的完整 release bundle |
+| Windows x64 | 包含可执行文件及运行时文件的 ZIP |
+| macOS arm64 | ZIP 中的未签名、未经公证的 `.app` |
+| iOS | tar 压缩包中的未签名 release `Runner.app`，真机安装前需要签名 |
+
+这些产物用于演示测试，不用于商店分发。桌面应用请保留完整目录。
+OHOS 需要单独的 HarmonyOS 工具链，未包含在此工作流中。
+每份产物的 `BUILD-INFO.txt` 会记录源码提交和 Flutter 版本。
+
 ## 许可证
 
 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
