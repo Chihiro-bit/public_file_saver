@@ -1,5 +1,4 @@
-## 1.2.0
-
+## 1.3.0 (Unreleased)
 
 ### Added
 - **Batch saving** via a new, standalone `PublicFileSaverBatch` class:
@@ -17,10 +16,14 @@
 ### Notes
 - Batch saving is **dialog-free by design**. There is no batched equivalent of `saveBytesWithDialog()`: on Android, macOS, Windows, and Linux the native save dialog handles exactly one file, so a batch would have to show one dialog per file. Batch methods always save to the public Downloads / Documents location.
 - Items are saved strictly one at a time. Concurrent saves could race in the native "find a non-colliding name" logic and overwrite each other, and sequential processing also keeps at most one file's bytes in memory.
-- `PublicFileSaver` and its `saveBytes()` / `saveBytesWithDialog()` / `saveFile()` / `saveFromUrl()` signatures are unchanged. This release is fully backward compatible.
+- Release preparation is incomplete: reconcile this branch with published 1.2.0 before release. The current branch omits the published `saveFromUrl(timeout:)` parameter, `sanitizeSubDir`, and several platform fixes; backward compatibility has not been established.
 - `saveFiles()` is not supported on Web (reading a `File` throws there); use `saveBytes()` instead.
 
-## 1.1.0
+### Development compatibility
+- Use flutter_lints 4.x in the package and example to support the local Dart 3.4.3 toolchain.
+- Lower the example Dart SDK constraint to >=3.4.3 <4.0.0 and remove unused integration-test imports.
+
+## 1.2.0
 
 ### Added
 - **macOS** support: direct save to `~/Downloads` and `NSSavePanel` for dialog mode.
