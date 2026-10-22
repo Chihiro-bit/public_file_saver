@@ -210,7 +210,7 @@ class PublicFileSaverBatch {
           bytes: payload.bytes,
           fileName: PublicFileSaver.sanitizeFileName(payload.fileName),
           mimeType: payload.mimeType,
-          subDir: subDir,
+          subDir: PublicFileSaver.sanitizeSubDir(subDir),
         );
 
         if (saved == null) {

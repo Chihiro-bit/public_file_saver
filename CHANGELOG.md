@@ -11,6 +11,8 @@
 - Batch saving is available on all supported platforms and needs no platform-specific code.
 
 ### Fixed
+- Batch saves now validate and sanitize subdirectories using the same checks as single-file saves.
+- Batch URL downloads reuse the published Content-Disposition parser, including UTF-8 names, spaces, and literal percent signs.
 - **Android:** supports AGP 9 built-in Kotlin ([#1](https://github.com/Chihiro-bit/public_file_saver/issues/1)). The plugin no longer applies the Kotlin Gradle Plugin when built-in Kotlin is enabled, which removes the Flutter warning "Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP)". Older toolchains (AGP < 9, or AGP 9 with `android.builtInKotlin=false`) still get KGP applied as before, so the minimum Flutter version is unchanged.
 
 ### Notes

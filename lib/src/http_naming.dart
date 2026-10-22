@@ -1,21 +1,16 @@
 import 'package:http/http.dart' as http;
 import 'package:mime/mime.dart';
 
+import 'content_disposition.dart';
+
 /// Infers a file name for a downloaded response, preferring the
 /// `Content-Disposition` header, then the URL's last path segment, and finally
 /// a timestamped fallback.
 String inferFileNameFromResponse(http.Response response, String url) {
   final contentDisposition = response.headers['content-disposition'];
   if (contentDisposition != null) {
-    final regex = RegExp(
-      r"filename[*]?=[" "\"'" r"]?([^" "\"';" r"\s]+)[" "\"'" r"]?",
-      caseSensitive: false,
-    );
-    final match = regex.firstMatch(contentDisposition);
-    if (match != null && match.group(1) != null) {
-      final name = Uri.decodeComponent(match.group(1)!);
-      if (name.isNotEmpty) return name;
-    }
+    final name = parseContentDispositionFileName(contentDisposition);
+    if (name != null && name.isNotEmpty) return name;
   }
 
   final uri = Uri.parse(url);
