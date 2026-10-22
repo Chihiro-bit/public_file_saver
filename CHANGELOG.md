@@ -16,12 +16,12 @@
 ### Notes
 - Batch saving is **dialog-free by design**. There is no batched equivalent of `saveBytesWithDialog()`: on Android, macOS, Windows, and Linux the native save dialog handles exactly one file, so a batch would have to show one dialog per file. Batch methods always save to the public Downloads / Documents location.
 - Items are saved strictly one at a time. Concurrent saves could race in the native "find a non-colliding name" logic and overwrite each other, and sequential processing also keeps at most one file's bytes in memory.
-- Release preparation is incomplete: reconcile this branch with published 1.2.0 before release. The current branch omits the published `saveFromUrl(timeout:)` parameter, `sanitizeSubDir`, and several platform fixes; backward compatibility has not been established.
+- Merged the published 1.2.0 implementation and platform fixes into this development branch, retaining `saveFromUrl(timeout:)` and `sanitizeSubDir`. This version remains unreleased pending platform build validation.
 - `saveFiles()` is not supported on Web (reading a `File` throws there); use `saveBytes()` instead.
 
 ### Development compatibility
 - Use flutter_lints 4.x in the package and example to support the local Dart 3.4.3 toolchain.
-- Lower the example Dart SDK constraint to >=3.4.3 <4.0.0 and remove unused integration-test imports.
+- Lower the example Dart SDK constraint to >=3.4.3 <4.0.0 and retain the imports required by the restored integration test.
 
 ## 1.2.0
 

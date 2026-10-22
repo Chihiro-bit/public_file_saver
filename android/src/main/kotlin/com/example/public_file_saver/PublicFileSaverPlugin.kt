@@ -7,6 +7,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -18,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 
 /** PublicFileSaverPlugin */
 class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
@@ -35,6 +38,9 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private var pendingResult: Result? = null
     private var pendingBytes: ByteArray? = null
     private var pendingFileName: String? = null
+
+    /** Delivers method channel results back on the main thread. */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = flutterPluginBinding.applicationContext
@@ -97,14 +103,29 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 return
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ - Use MediaStore
-                val savedResult = saveBytesToMediaStore(context, bytes, fileName, mimeType, subDir)
-                result.success(savedResult)
-            } else {
-                // Android 9 and below - Use public Downloads directory
-                val savedResult = saveBytesToLegacyDownloads(bytes, fileName, subDir)
-                result.success(savedResult)
+            // File I/O can be large (this API is used for downloads), so run
+            // it off the main thread to avoid ANRs. Results are delivered
+            // back on the main thread.
+            Thread {
+                try {
+                    val savedResult =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            // Android 10+ - Use MediaStore
+                            saveBytesToMediaStore(context, bytes, fileName, mimeType, subDir)
+                        } else {
+                            // Android 9 and below - Use public Downloads directory
+                            saveBytesToLegacyDownloads(bytes, fileName, subDir)
+                        }
+                    mainHandler.post { result.success(savedResult) }
+                } catch (e: Exception) {
+                    mainHandler.post {
+                        result.error("SAVE_FAILED", e.message, e.stackTraceToString())
+                    }
+                }
+            }.apply {
+                isDaemon = true
+                name = "public_file_saver_io"
+                start()
             }
         } catch (e: Exception) {
             result.error("SAVE_FAILED", e.message, e.stackTraceToString())
@@ -137,14 +158,28 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         val uri = resolver.insert(collection, contentValues)
             ?: throw Exception("Failed to create MediaStore entry")
 
-        resolver.openOutputStream(uri)?.use { outputStream ->
-            outputStream.write(bytes)
-        } ?: throw Exception("Failed to open output stream")
+        try {
+            resolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(bytes)
+            } ?: throw IOException("Failed to open output stream")
 
-        // Clear pending flag
-        contentValues.clear()
-        contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
-        resolver.update(uri, contentValues, null, null)
+            // Clear pending flag. DISPLAY_NAME/MIME_TYPE/RELATIVE_PATH are
+            // re-put because some OEM ROMs require all values on the update
+            // for the row to leave the pending state.
+            contentValues.clear()
+            contentValues.put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            contentValues.put(MediaStore.Downloads.MIME_TYPE, mimeType)
+            contentValues.put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+            contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
+            if (resolver.update(uri, contentValues, null, null) <= 0) {
+                throw IOException("Failed to publish MediaStore entry")
+            }
+        } catch (e: Exception) {
+            // Do not leave a permanently hidden IS_PENDING row behind after
+            // an interrupted or failed write.
+            runCatching { resolver.delete(uri, null, null) }
+            throw e
+        }
 
         return mapOf(
             "fileName" to fileName,
@@ -153,6 +188,7 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         )
     }
 
+    @Synchronized
     private fun saveBytesToLegacyDownloads(
         bytes: ByteArray,
         fileName: String,
@@ -167,15 +203,31 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             File(downloadsDir, subDir)
         }
 
-        if (!targetDir.exists()) {
-            targetDir.mkdirs()
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            throw IOException("Failed to create directory: ${targetDir.absolutePath}")
+        }
+        if (!targetDir.isDirectory) {
+            throw IOException("Save destination is not a directory: ${targetDir.absolutePath}")
         }
 
         // Handle file name conflicts by adding (1), (2), etc.
         val targetFile = getUniqueFile(targetDir, fileName)
 
-        FileOutputStream(targetFile).use { outputStream ->
-            outputStream.write(bytes)
+        // Write to a sibling temp file and publish it with a rename so callers
+        // never observe a partially-written result.
+        val tempFile = File.createTempFile("pfs", ".tmp", targetDir)
+        try {
+            FileOutputStream(tempFile).use { outputStream ->
+                outputStream.write(bytes)
+                outputStream.fd.sync()
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                throw IOException("Failed to publish file: ${targetFile.absolutePath}")
+            }
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
         }
 
         return mapOf(
@@ -271,23 +323,34 @@ class PublicFileSaverPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             return true
         }
 
-        try {
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                outputStream.write(bytes)
-            } ?: throw Exception("Failed to open output stream")
+        // Write off the main thread (the file can be large).
+        Thread {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(bytes)
+                } ?: throw Exception("Failed to open output stream")
 
-            // Extract file name from URI if possible
-            val savedFileName = fileName ?: getFileNameFromUri(context, uri) ?: "saved_file"
+                // Extract file name from URI if possible
+                val savedFileName = fileName ?: getFileNameFromUri(context, uri) ?: "saved_file"
 
-            result.success(
-                mapOf(
-                    "fileName" to savedFileName,
-                    "uri" to uri.toString(),
-                    "path" to null
-                )
-            )
-        } catch (e: Exception) {
-            result.error("SAVE_FAILED", e.message, e.stackTraceToString())
+                mainHandler.post {
+                    result.success(
+                        mapOf(
+                            "fileName" to savedFileName,
+                            "uri" to uri.toString(),
+                            "path" to null
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("SAVE_FAILED", e.message, e.stackTraceToString())
+                }
+            }
+        }.apply {
+            isDaemon = true
+            name = "public_file_saver_dialog_io"
+            start()
         }
 
         return true
