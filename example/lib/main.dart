@@ -33,7 +33,6 @@ class FileSaverDemo extends StatefulWidget {
 
 class _FileSaverDemoState extends State<FileSaverDemo> {
   final _fileSaver = PublicFileSaver();
-  final _batchSaver = const PublicFileSaverBatch();
   final _urlController = TextEditingController(
     text: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
   );
@@ -119,62 +118,6 @@ This file demonstrates the saveBytes functionality.
       } else {
         _updateStatus('❌ saveBytes returned null (cancelled or failed)');
         _showSnackBar('Save cancelled or failed', isError: true);
-      }
-    } catch (e) {
-      _updateStatus('❌ Error: $e');
-      _showSnackBar('Error: $e', isError: true);
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// Test Mode E: batch save (no dialog)
-  ///
-  /// Saves three files in one call and reports per-item outcomes. Any item that
-  /// fails is listed in the status text; the rest are still written.
-  Future<void> _testBatchSave() async {
-    _setLoading(true);
-    _updateStatus('Batch saving...');
-
-    try {
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-
-      final result = await _batchSaver.saveBytes(
-        files: [
-          FileToSave(
-            bytes: _generateTextBytes(),
-            fileName: 'batch_${stamp}_notes.txt',
-            mimeType: 'text/plain',
-          ),
-          FileToSave(
-            bytes: _generateJsonBytes(),
-            fileName: 'batch_${stamp}_data.json',
-            mimeType: 'application/json',
-          ),
-          FileToSave(
-            bytes: _generateTextBytes(),
-            fileName: 'batch_${stamp}_readme.txt',
-            mimeType: 'text/plain',
-          ),
-        ],
-        subDir: 'BatchDemo',
-        onProgress: (done, total) {
-          _updateStatus('Batch saving... $done / $total');
-        },
-      );
-
-      final summary = StringBuffer()
-        ..writeln('Saved ${result.succeeded.length} of ${result.totalRequested}');
-      for (final failure in result.failed) {
-        summary.writeln('[${failure.index}] ${failure.fileName}: ${failure.error}');
-      }
-
-      if (result.isCompleteSuccess) {
-        _updateStatus('✅ Batch save succeeded!\n$summary', result.succeeded.last);
-        _showSnackBar('${result.succeeded.length} files saved!');
-      } else {
-        _updateStatus('⚠️ Batch finished with failures\n$summary');
-        _showSnackBar('${result.failed.length} item(s) failed', isError: true);
       }
     } catch (e) {
       _updateStatus('❌ Error: $e');
@@ -466,20 +409,6 @@ This file demonstrates the saveBytes functionality.
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Mode E: batch save
-            const Text(
-              'Mode E: Batch Save (No Dialog)',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _testBatchSave,
-              icon: const Icon(Icons.library_add),
-              label: const Text('Save 3 Files at Once'),
             ),
 
             const SizedBox(height: 32),

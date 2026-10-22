@@ -9,7 +9,6 @@ import 'src/content_disposition.dart';
 import 'src/io_compat_web.dart' if (dart.library.io) 'src/io_compat.dart';
 import 'src/public_saved_file.dart';
 
-export 'public_file_saver_batch.dart';
 export 'src/public_saved_file.dart';
 
 /// Reliably saves bytes, local files, and URL downloads to user-visible

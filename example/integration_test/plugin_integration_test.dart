@@ -10,8 +10,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:public_file_saver/public_file_saver.dart';
 
+import 'package:public_file_saver/public_file_saver.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
