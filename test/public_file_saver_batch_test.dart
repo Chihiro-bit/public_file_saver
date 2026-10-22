@@ -88,14 +88,34 @@ void main() {
   });
 
   group('saveBytes', () {
+    test('rejects unsafe batch subdirectories before platform writes',
+        () async {
+      for (final subDir in ['../outside', '/absolute', r'C:\outside']) {
+        final result = await const PublicFileSaverBatch().saveBytes(
+          files: [_item('safe.txt')],
+          subDir: subDir,
+        );
+        expect(result.failed.single.error, isA<ArgumentError>());
+        expect(platform.savedNames, isEmpty);
+      }
+    });
+
+    test('sanitizes batch subdirectory segments', () async {
+      await const PublicFileSaverBatch().saveBytes(
+        files: [_item('safe.txt')],
+        subDir: r'my\dir:one',
+      );
+      expect(platform.savedSubDirs.single, 'my/dir_one');
+    });
+
     test('saves every item, in list order', () async {
       final result = await const PublicFileSaverBatch().saveBytes(
         files: [_item('a.pdf'), _item('b.png'), _item('c.txt')],
       );
 
       expect(platform.savedNames, ['a.pdf', 'b.png', 'c.txt']);
-      expect(result.succeeded.map((f) => f.fileName),
-          ['a.pdf', 'b.png', 'c.txt']);
+      expect(
+          result.succeeded.map((f) => f.fileName), ['a.pdf', 'b.png', 'c.txt']);
       expect(result.failed, isEmpty);
       expect(result.isCompleteSuccess, isTrue);
       expect(result.hasFailures, isFalse);
@@ -277,6 +297,27 @@ void main() {
   });
 
   group('saveFromUrls', () {
+    test('reuses published HTTP filename fixes in batch downloads', () async {
+      final headers = [
+        "attachment; filename*=UTF-8''%E6%B5%8B%E8%AF%95.pdf",
+        'attachment; filename="50%off.pdf"',
+        'attachment; filename="annual report.pdf"',
+      ];
+      var index = 0;
+      final client = MockClient((request) async => http.Response.bytes(
+            _bytes(1),
+            200,
+            headers: {'content-disposition': headers[index++]},
+          ));
+      final result =
+          await PublicFileSaverBatch(httpClient: client).saveFromUrls(
+        urls: List.generate(3, (i) => UrlToSave('https://example.com/$i')),
+      );
+      expect(result.failed, isEmpty);
+      expect(
+          platform.savedNames, ['测试.pdf', '50%off.pdf', 'annual report.pdf']);
+    });
+
     test('downloads each URL and infers name and mime type', () async {
       final client = MockClient((request) async {
         return http.Response.bytes(

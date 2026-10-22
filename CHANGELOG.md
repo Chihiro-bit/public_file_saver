@@ -1,5 +1,4 @@
-## 1.2.0
-
+## 1.3.0 (Unreleased)
 
 ### Added
 - **Batch saving** via a new, standalone `PublicFileSaverBatch` class:
@@ -12,15 +11,21 @@
 - Batch saving is available on all supported platforms and needs no platform-specific code.
 
 ### Fixed
+- Batch saves now validate and sanitize subdirectories using the same checks as single-file saves.
+- Batch URL downloads reuse the published Content-Disposition parser, including UTF-8 names, spaces, and literal percent signs.
 - **Android:** supports AGP 9 built-in Kotlin ([#1](https://github.com/Chihiro-bit/public_file_saver/issues/1)). The plugin no longer applies the Kotlin Gradle Plugin when built-in Kotlin is enabled, which removes the Flutter warning "Your app uses the following plugins that apply Kotlin Gradle Plugin (KGP)". Older toolchains (AGP < 9, or AGP 9 with `android.builtInKotlin=false`) still get KGP applied as before, so the minimum Flutter version is unchanged.
 
 ### Notes
 - Batch saving is **dialog-free by design**. There is no batched equivalent of `saveBytesWithDialog()`: on Android, macOS, Windows, and Linux the native save dialog handles exactly one file, so a batch would have to show one dialog per file. Batch methods always save to the public Downloads / Documents location.
 - Items are saved strictly one at a time. Concurrent saves could race in the native "find a non-colliding name" logic and overwrite each other, and sequential processing also keeps at most one file's bytes in memory.
-- `PublicFileSaver` and its `saveBytes()` / `saveBytesWithDialog()` / `saveFile()` / `saveFromUrl()` signatures are unchanged. This release is fully backward compatible.
+- Merged the published 1.2.0 implementation and platform fixes into this development branch, retaining `saveFromUrl(timeout:)` and `sanitizeSubDir`. This version remains unreleased pending platform build validation.
 - `saveFiles()` is not supported on Web (reading a `File` throws there); use `saveBytes()` instead.
 
-## 1.1.0
+### Development compatibility
+- Use flutter_lints 4.x in the package and example to support the local Dart 3.4.3 toolchain.
+- Lower the example Dart SDK constraint to >=3.4.3 <4.0.0 and retain the imports required by the restored integration test.
+
+## 1.2.0
 
 ### Added
 - **macOS** support: direct save to `~/Downloads` and `NSSavePanel` for dialog mode.

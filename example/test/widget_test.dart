@@ -28,19 +28,38 @@ void main() {
 
     // Buttons
     expect(
-      find.widgetWithText(ElevatedButton, 'Save Text File'),
+      find.ancestor(
+          of: find.text('Save Text File'),
+          matching:
+              find.byWidgetPredicate((widget) => widget is ElevatedButton)),
       findsOneWidget,
     );
     expect(
-      find.widgetWithText(ElevatedButton, 'Save JSON with Dialog'),
+      find.ancestor(
+          of: find.text('Save JSON with Dialog'),
+          matching:
+              find.byWidgetPredicate((widget) => widget is ElevatedButton)),
       findsOneWidget,
     );
     expect(
-      find.widgetWithText(ElevatedButton, 'Save to Subdirectory'),
+      find.ancestor(
+          of: find.text('Save to Subdirectory'),
+          matching:
+              find.byWidgetPredicate((widget) => widget is ElevatedButton)),
       findsOneWidget,
     );
-    expect(find.widgetWithText(ElevatedButton, 'Download'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'With Dialog'), findsOneWidget);
+    expect(
+        find.ancestor(
+            of: find.text('Download'),
+            matching:
+                find.byWidgetPredicate((widget) => widget is ElevatedButton)),
+        findsOneWidget);
+    expect(
+        find.ancestor(
+            of: find.text('With Dialog'),
+            matching:
+                find.byWidgetPredicate((widget) => widget is ElevatedButton)),
+        findsOneWidget);
 
     // URL input
     expect(find.byType(TextField), findsOneWidget);
