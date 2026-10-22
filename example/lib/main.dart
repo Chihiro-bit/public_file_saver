@@ -34,7 +34,8 @@ class FileSaverDemo extends StatefulWidget {
 class _FileSaverDemoState extends State<FileSaverDemo> {
   final _fileSaver = PublicFileSaver();
   final _urlController = TextEditingController(
-    text: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+    text:
+        'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
   );
 
   String _status = 'Ready';
@@ -69,10 +70,16 @@ This file demonstrates the saveBytes functionality.
       'name': 'Public File Saver Demo',
       'timestamp': DateTime.now().toIso8601String(),
       'version': '1.0.0',
-      'features': ['saveBytes', 'saveBytesWithDialog', 'saveFile', 'saveFromUrl'],
+      'features': [
+        'saveBytes',
+        'saveBytesWithDialog',
+        'saveFile',
+        'saveFromUrl'
+      ],
       'platforms': ['Android', 'iOS', 'HarmonyOS'],
     };
-    return Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(data)));
+    return Uint8List.fromList(
+        utf8.encode(const JsonEncoder.withIndent('  ').convert(data)));
   }
 
   void _setLoading(bool loading) {
@@ -106,7 +113,7 @@ This file demonstrates the saveBytes functionality.
 
     try {
       final bytes = _generateTextBytes();
-      final result = await _fileSaver.saveBytes(
+      final result = await _fileSaver.save(
         bytes: bytes,
         fileName: 'test_file_${DateTime.now().millisecondsSinceEpoch}.txt',
         mimeType: 'text/plain',
@@ -134,7 +141,8 @@ This file demonstrates the saveBytes functionality.
 
     try {
       final bytes = _generateJsonBytes();
-      final result = await _fileSaver.saveBytesWithDialog(
+      final result = await _fileSaver.save(
+        useDialog: true,
         bytes: bytes,
         fileName: 'demo_data.json',
         mimeType: 'application/json',
@@ -164,7 +172,7 @@ This file demonstrates the saveBytes functionality.
       // For demo purposes, we'll use saveBytes since we don't have a real file
       // In real usage, you would pass an actual File object
       final bytes = _generateTextBytes();
-      final result = await _fileSaver.saveBytes(
+      final result = await _fileSaver.save(
         bytes: bytes,
         fileName: 'saved_local_file.txt',
         mimeType: 'text/plain',
@@ -198,7 +206,7 @@ This file demonstrates the saveBytes functionality.
     _updateStatus('Downloading from URL...');
 
     try {
-      final result = await _fileSaver.saveFromUrl(
+      final result = await _fileSaver.save(
         url: url,
         useDialog: false, // Set to true to show dialog
       );
@@ -230,7 +238,7 @@ This file demonstrates the saveBytes functionality.
     _updateStatus('Downloading from URL...');
 
     try {
-      final result = await _fileSaver.saveFromUrl(
+      final result = await _fileSaver.save(
         url: url,
         useDialog: true,
       );
@@ -325,7 +333,8 @@ This file demonstrates the saveBytes functionality.
                       _buildResultRow('fileName', _lastResult!.fileName),
                       _buildResultRow('uri', _lastResult!.uri ?? 'null'),
                       _buildResultRow('path', _lastResult!.path ?? 'null'),
-                      _buildResultRow('isSuccess', _lastResult!.isSuccess.toString()),
+                      _buildResultRow(
+                          'isSuccess', _lastResult!.isSuccess.toString()),
                     ],
                   ),
                 ),
@@ -480,4 +489,3 @@ This file demonstrates the saveBytes functionality.
     );
   }
 }
-

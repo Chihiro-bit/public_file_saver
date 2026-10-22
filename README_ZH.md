@@ -1,3 +1,5 @@
+> 新接口：统一使用 [save()](#统一保存入口与迁移) 保存 bytes、本地文件或 URL。下方旧接口保留兼容，但已标记废弃。
+
 # public_file_saver
 
 一个可靠的 Flutter 文件保存插件，支持将字节数据、本地文件和网络下载保存到用户可见位置，并提供直接保存与系统保存对话框。适用于 **Android**、**iOS**、**macOS**、**Web**、**Windows**、**Linux** 和 **鸿蒙系统 (OHOS)**。
@@ -158,7 +160,7 @@ Future<PublicSavedFile?> saveBytes({
 ```dart
 final bytes = Uint8List.fromList(utf8.encode('你好，世界！'));
 
-final result = await fileSaver.saveBytes(
+final result = await fileSaver.save(
   bytes: bytes,
   fileName: 'hello.txt',
   mimeType: 'text/plain',
@@ -216,7 +218,7 @@ final bytes = Uint8List.fromList(
   utf8.encode(jsonEncode(jsonData))
 );
 
-final result = await fileSaver.saveBytesWithDialog(
+final result = await fileSaver.save(useDialog: true,
   bytes: bytes,
   fileName: 'data.json',
   mimeType: 'application/json',
@@ -263,13 +265,13 @@ import 'dart:io';
 final file = File('/path/to/document.pdf');
 
 // 不显示对话框保存
-final result = await fileSaver.saveFile(
+final result = await fileSaver.save(
   file: file,
   subDir: 'Documents',
 );
 
 // 显示对话框保存
-final result = await fileSaver.saveFile(
+final result = await fileSaver.save(
   file: file,
   fileName: 'renamed_document.pdf',
   useDialog: true,
@@ -308,13 +310,13 @@ Future<PublicSavedFile?> saveFromUrl({
 
 ```dart
 // 直接下载并保存
-final result = await fileSaver.saveFromUrl(
+final result = await fileSaver.save(
   url: 'https://example.com/document.pdf',
   subDir: 'Downloads',
 );
 
 // 下载后显示保存对话框
-final result = await fileSaver.saveFromUrl(
+final result = await fileSaver.save(
   url: 'https://example.com/image.png',
   fileName: 'my_image.png',
   useDialog: true,
@@ -336,7 +338,7 @@ class PublicSavedFile {
   final String fileName;  // 保存的文件名
   final String? uri;      // 保存文件的 URI（取决于平台）
   final String? path;     // 文件系统路径（取决于平台）
-  
+
   bool get isSuccess => uri != null || path != null;
 }
 ```
@@ -393,7 +395,7 @@ class _SaveFileExampleState extends State<SaveFileExample> {
       utf8.encode('来自 Flutter 的问候！\n时间戳: ${DateTime.now()}'),
     );
 
-    final result = await _fileSaver.saveBytes(
+    final result = await _fileSaver.save(
       bytes: bytes,
       fileName: 'flutter_demo.txt',
       mimeType: 'text/plain',
@@ -414,14 +416,14 @@ class _SaveFileExampleState extends State<SaveFileExample> {
     final data = {'message': '你好', 'timestamp': DateTime.now().toIso8601String()};
     final bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
 
-    final result = await _fileSaver.saveBytesWithDialog(
+    final result = await _fileSaver.save(useDialog: true,
       bytes: bytes,
       fileName: 'data.json',
       mimeType: 'application/json',
     );
 
     setState(() {
-      _status = result?.isSuccess == true 
+      _status = result?.isSuccess == true
         ? '保存到: ${result!.path ?? result.uri}'
         : '已取消';
     });
@@ -429,13 +431,13 @@ class _SaveFileExampleState extends State<SaveFileExample> {
 
   Future<void> _downloadAndSave() async {
     try {
-      final result = await _fileSaver.saveFromUrl(
+      final result = await _fileSaver.save(
         url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
         useDialog: true,
       );
 
       setState(() {
-        _status = result?.isSuccess == true 
+        _status = result?.isSuccess == true
           ? '已下载: ${result!.fileName}'
           : '失败';
       });
@@ -482,11 +484,35 @@ class _SaveFileExampleState extends State<SaveFileExample> {
 
 ```dart
 try {
-  final result = await fileSaver.saveFromUrl(url: 'https://example.com/file.pdf');
+  final result = await fileSaver.save(url: 'https://example.com/file.pdf');
 } catch (e) {
   print('下载失败: $e');
 }
 ```
+
+## 统一保存入口与迁移
+
+统一使用 `PublicFileSaver().save(...)`，`bytes`、`file`、`url` 必须且只能传一个：
+
+```dart
+final saver = PublicFileSaver();
+await saver.save(bytes: bytes, fileName: 'report.pdf');
+await saver.save(file: file, useDialog: true);
+await saver.save(
+  url: 'https://example.com/report.pdf',
+  headers: {'Authorization': 'Bearer token'},
+  timeout: const Duration(seconds: 30),
+);
+```
+
+bytes 必须提供非空文件名；MIME 类型默认自动推断，也可以指定。
+`subDir` 仅用于直接保存；`fileSuffixChoices` 仅用于对话框，当前由 OHOS 支持。
+`headers` 和 `timeout` 仅用于 URL。不合法的参数组合会在读取或下载前抛出 `ArgumentError`。
+
+原来的 `saveBytes`、`saveBytesWithDialog`、`saveFile`、`saveFromUrl` 已标记废弃，
+仍保留原有行为。迁移时改为 `save`；对话框方法额外传 `useDialog: true`。
+Web 仍不支持本地 File；读取和下载仍会将整个文件放入内存。
+timeout 限制等待时间，不保证中止底层请求；Web 对话框仍受浏览器支持与用户手势限制。
 
 ## 许可证
 

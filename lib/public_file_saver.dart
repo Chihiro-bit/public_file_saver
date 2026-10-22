@@ -17,6 +17,161 @@ export 'src/public_saved_file.dart';
 /// Supports Android, iOS, macOS, Web, Windows, Linux, and HarmonyOS (OHOS)
 /// with consistent API and return format.
 class PublicFileSaver {
+  /// Saves exactly one source: [bytes], [file], or an HTTP(S) [url].
+  ///
+  /// [fileName] is required for bytes and inferred for files and URLs.
+  /// MIME type is inferred when omitted. [useDialog] requests the platform's
+  /// save picker; browser support and platform restrictions still apply.
+  /// [subDir] applies only to direct saves; [fileSuffixChoices] applies only
+  /// to dialogs (currently OHOS). Local files are not supported on Web.
+  ///
+  /// [headers] and [timeout] apply only to URL downloads. Downloads and local
+  /// files are buffered in memory, so this is not a streaming download API.
+  /// A timeout limits waiting for the response; it does not guarantee that the
+  /// underlying HTTP request is aborted.
+  ///
+  /// Returns the platform result, or null on cancellation. Invalid options
+  /// throw [ArgumentError] before any file read, request, or platform call.
+  Future<PublicSavedFile?> save({
+    Uint8List? bytes,
+    File? file,
+    String? url,
+    String? fileName,
+    String? mimeType,
+    String? subDir,
+    bool useDialog = false,
+    List<String>? fileSuffixChoices,
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) {
+    final sources = [bytes != null, file != null, url != null]
+        .where((present) => present)
+        .length;
+    if (sources != 1) {
+      throw ArgumentError('Provide exactly one of bytes, file, or url.');
+    }
+    if (fileName != null && fileName.trim().isEmpty) {
+      throw ArgumentError.value(fileName, 'fileName', 'Must not be blank');
+    }
+    if (bytes != null && fileName == null) {
+      throw ArgumentError('fileName is required when saving bytes.');
+    }
+    if (useDialog && subDir != null) {
+      throw ArgumentError('subDir cannot be combined with useDialog.');
+    }
+    if (!useDialog && fileSuffixChoices != null) {
+      throw ArgumentError('fileSuffixChoices requires useDialog.');
+    }
+    if (url == null && (headers != null || timeout != null)) {
+      throw ArgumentError('headers and timeout require a URL source.');
+    }
+    if (timeout != null && timeout <= Duration.zero) {
+      throw ArgumentError.value(timeout, 'timeout', 'Must be positive');
+    }
+    final directory = useDialog ? null : sanitizeSubDir(subDir);
+    if (url != null) {
+      final uri = Uri.tryParse(url);
+      if (uri == null ||
+          !['http', 'https'].contains(uri.scheme) ||
+          uri.host.isEmpty) {
+        throw ArgumentError.value(url, 'url', 'Expected an HTTP(S) URL');
+      }
+      return _saveFromUrl(
+        url: url,
+        fileName: fileName,
+        mimeType: mimeType,
+        subDir: directory,
+        useDialog: useDialog,
+        timeout: timeout,
+        headers: headers,
+        fileSuffixChoices: fileSuffixChoices,
+      );
+    }
+    if (file != null) {
+      return _saveFile(
+        file: file,
+        fileName: fileName,
+        mimeType: mimeType,
+        subDir: directory,
+        useDialog: useDialog,
+        fileSuffixChoices: fileSuffixChoices,
+      );
+    }
+    final mime =
+        mimeType ?? lookupMimeType(fileName!) ?? 'application/octet-stream';
+    return useDialog
+        ? _saveBytesWithDialog(
+            bytes: bytes!,
+            fileName: fileName!,
+            mimeType: mime,
+            fileSuffixChoices: fileSuffixChoices)
+        : _saveBytes(
+            bytes: bytes!,
+            fileName: fileName!,
+            mimeType: mime,
+            subDir: directory);
+  }
+
+  /// Legacy byte-saving entry point. Use [save] instead.
+  @Deprecated('Use save(bytes: bytes, fileName: fileName) instead.')
+  Future<PublicSavedFile?> saveBytes({
+    required Uint8List bytes,
+    required String fileName,
+    String mimeType = 'application/octet-stream',
+    String? subDir,
+  }) =>
+      _saveBytes(
+          bytes: bytes, fileName: fileName, mimeType: mimeType, subDir: subDir);
+
+  /// Legacy dialog entry point. Use [save] with useDialog instead.
+  @Deprecated(
+      'Use save(bytes: bytes, fileName: fileName, useDialog: true) instead.')
+  Future<PublicSavedFile?> saveBytesWithDialog({
+    required Uint8List bytes,
+    required String fileName,
+    String mimeType = 'application/octet-stream',
+    List<String>? fileSuffixChoices,
+  }) =>
+      _saveBytesWithDialog(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mimeType,
+          fileSuffixChoices: fileSuffixChoices);
+
+  /// Legacy local-file entry point. Use [save] instead.
+  @Deprecated('Use save(file: file) instead.')
+  Future<PublicSavedFile?> saveFile({
+    required File file,
+    String? fileName,
+    String? mimeType,
+    String? subDir,
+    bool useDialog = false,
+  }) =>
+      _saveFile(
+          file: file,
+          fileName: fileName,
+          mimeType: mimeType,
+          subDir: subDir,
+          useDialog: useDialog);
+
+  /// Legacy URL entry point. Use [save] instead.
+  @Deprecated('Use save(url: url) instead.')
+  Future<PublicSavedFile?> saveFromUrl({
+    required String url,
+    String? fileName,
+    String? mimeType,
+    String? subDir,
+    bool useDialog = false,
+    Duration? timeout,
+  }) =>
+      _saveFromUrl(
+          url: url,
+          fileName: fileName,
+          mimeType: mimeType,
+          subDir: subDir,
+          useDialog: useDialog,
+          timeout: timeout);
+
   /// Illegal characters for file names that will be replaced.
   static const _illegalFileNameChars = r'\/:*?"<>|';
 
@@ -115,7 +270,7 @@ class PublicFileSaver {
   /// (Android, iOS, macOS, Windows, Linux).
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
-  Future<PublicSavedFile?> saveBytes({
+  Future<PublicSavedFile?> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     String mimeType = 'application/octet-stream',
@@ -144,7 +299,7 @@ class PublicFileSaver {
   /// [fileSuffixChoices] - Optional file extension choices (OHOS only).
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled.
-  Future<PublicSavedFile?> saveBytesWithDialog({
+  Future<PublicSavedFile?> _saveBytesWithDialog({
     required Uint8List bytes,
     required String fileName,
     String mimeType = 'application/octet-stream',
@@ -161,7 +316,7 @@ class PublicFileSaver {
 
   /// Save a local file to a public visible location.
   ///
-  /// Reads the file content and delegates to [saveBytes] or [saveBytesWithDialog].
+  /// Reads the file content and delegates to [save].
   ///
   /// [file] - The file to save.
   /// [fileName] - Optional custom file name (uses file.path basename if not provided).
@@ -170,25 +325,27 @@ class PublicFileSaver {
   /// [useDialog] - If true, shows file picker dialog.
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
-  Future<PublicSavedFile?> saveFile({
+  Future<PublicSavedFile?> _saveFile({
     required File file,
     String? fileName,
     String? mimeType,
     String? subDir,
     bool useDialog = false,
+    List<String>? fileSuffixChoices,
   }) async {
     final bytes = await file.readAsBytes();
     final name = fileName ?? file.uri.pathSegments.last;
     final mime = mimeType ?? lookupMimeType(name) ?? 'application/octet-stream';
 
     if (useDialog) {
-      return saveBytesWithDialog(
+      return _saveBytesWithDialog(
         bytes: bytes,
         fileName: name,
         mimeType: mime,
+        fileSuffixChoices: fileSuffixChoices,
       );
     } else {
-      return saveBytes(
+      return _saveBytes(
         bytes: bytes,
         fileName: name,
         mimeType: mime,
@@ -201,7 +358,7 @@ class PublicFileSaver {
   ///
   /// Downloads the file content via HTTP GET, attempts to infer file name
   /// from Content-Disposition header or URL path, and delegates to
-  /// [saveBytes] or [saveBytesWithDialog].
+  /// [save].
   ///
   /// [url] - The HTTP(S) URL to download from.
   /// [fileName] - Optional custom file name (inferred from URL/headers if not provided).
@@ -213,15 +370,17 @@ class PublicFileSaver {
   ///
   /// Returns [PublicSavedFile] on success, or `null` if cancelled/failed.
   /// Throws exception on network error.
-  Future<PublicSavedFile?> saveFromUrl({
+  Future<PublicSavedFile?> _saveFromUrl({
     required String url,
     String? fileName,
     String? mimeType,
     String? subDir,
     bool useDialog = false,
     Duration? timeout,
+    Map<String, String>? headers,
+    List<String>? fileSuffixChoices,
   }) async {
-    final request = http.get(Uri.parse(url));
+    final request = http.get(Uri.parse(url), headers: headers);
     final responseFuture = timeout == null ? request : request.timeout(timeout);
 
     if (useDialog) {
@@ -237,6 +396,7 @@ class PublicFileSaver {
           bytes: response.bodyBytes,
           fileName: sanitizeFileName(name),
           mimeType: mimeType ?? _inferMimeType(response, name),
+          fileSuffixChoices: fileSuffixChoices,
         );
       });
       return PublicFileSaverPlatform.instance.saveBytesWithDialogDeferred(
@@ -249,7 +409,7 @@ class PublicFileSaver {
     _ensureSuccessfulResponse(response);
     final name = fileName ?? _inferFileNameFromResponse(response, url);
     final mime = mimeType ?? _inferMimeType(response, name);
-    return saveBytes(
+    return _saveBytes(
       bytes: response.bodyBytes,
       fileName: name,
       mimeType: mime,

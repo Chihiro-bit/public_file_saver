@@ -1,4 +1,11 @@
-## 1.2.1 (Unreleased)
+## Unreleased
+
+### Added
+- Unified save() entry point for bytes, local files, and HTTP(S) URLs, with direct-save or dialog mode.
+- URL request headers, MIME inference for bytes, and early validation of conflicting options.
+
+### Deprecated
+- saveBytes(), saveBytesWithDialog(), saveFile(), and saveFromUrl() remain available with their existing behavior; use save() instead.
 
 ### Fixed
 - Android: support AGP 9 built-in Kotlin without applying the Kotlin Gradle Plugin twice (issue #1). Keep the legacy Kotlin plugin path for older toolchains.

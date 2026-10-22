@@ -1,3 +1,5 @@
+> New API: use [save()](#unified-save-api-and-migration) for bytes, local files, and URLs. The four legacy methods below are deprecated but remain available.
+
 # public_file_saver
 
 A reliable Flutter plugin for saving bytes, local files, and URL downloads to user-visible locations. It supports both direct saves and native save dialogs across **Android**, **iOS**, **macOS**, **Web**, **Windows**, **Linux**, and **HarmonyOS (OHOS)**.
@@ -158,7 +160,7 @@ Future<PublicSavedFile?> saveBytes({
 ```dart
 final bytes = Uint8List.fromList(utf8.encode('Hello, World!'));
 
-final result = await fileSaver.saveBytes(
+final result = await fileSaver.save(
   bytes: bytes,
   fileName: 'hello.txt',
   mimeType: 'text/plain',
@@ -216,7 +218,7 @@ final bytes = Uint8List.fromList(
   utf8.encode(jsonEncode(jsonData))
 );
 
-final result = await fileSaver.saveBytesWithDialog(
+final result = await fileSaver.save(useDialog: true,
   bytes: bytes,
   fileName: 'data.json',
   mimeType: 'application/json',
@@ -263,13 +265,13 @@ import 'dart:io';
 final file = File('/path/to/document.pdf');
 
 // Save without dialog
-final result = await fileSaver.saveFile(
+final result = await fileSaver.save(
   file: file,
   subDir: 'Documents',
 );
 
 // Save with dialog
-final result = await fileSaver.saveFile(
+final result = await fileSaver.save(
   file: file,
   fileName: 'renamed_document.pdf',
   useDialog: true,
@@ -308,13 +310,13 @@ Future<PublicSavedFile?> saveFromUrl({
 
 ```dart
 // Download and save directly
-final result = await fileSaver.saveFromUrl(
+final result = await fileSaver.save(
   url: 'https://example.com/document.pdf',
   subDir: 'Downloads',
 );
 
 // Download and show save dialog
-final result = await fileSaver.saveFromUrl(
+final result = await fileSaver.save(
   url: 'https://example.com/image.png',
   fileName: 'my_image.png',
   useDialog: true,
@@ -336,7 +338,7 @@ class PublicSavedFile {
   final String fileName;  // Name of the saved file
   final String? uri;      // URI of the saved file (platform-dependent)
   final String? path;     // File system path (platform-dependent)
-  
+
   bool get isSuccess => uri != null || path != null;
 }
 ```
@@ -393,7 +395,7 @@ class _SaveFileExampleState extends State<SaveFileExample> {
       utf8.encode('Hello from Flutter!\nTimestamp: ${DateTime.now()}'),
     );
 
-    final result = await _fileSaver.saveBytes(
+    final result = await _fileSaver.save(
       bytes: bytes,
       fileName: 'flutter_demo.txt',
       mimeType: 'text/plain',
@@ -414,14 +416,14 @@ class _SaveFileExampleState extends State<SaveFileExample> {
     final data = {'message': 'Hello', 'timestamp': DateTime.now().toIso8601String()};
     final bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
 
-    final result = await _fileSaver.saveBytesWithDialog(
+    final result = await _fileSaver.save(useDialog: true,
       bytes: bytes,
       fileName: 'data.json',
       mimeType: 'application/json',
     );
 
     setState(() {
-      _status = result?.isSuccess == true 
+      _status = result?.isSuccess == true
         ? 'Saved to: ${result!.path ?? result.uri}'
         : 'Cancelled';
     });
@@ -429,13 +431,13 @@ class _SaveFileExampleState extends State<SaveFileExample> {
 
   Future<void> _downloadAndSave() async {
     try {
-      final result = await _fileSaver.saveFromUrl(
+      final result = await _fileSaver.save(
         url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
         useDialog: true,
       );
 
       setState(() {
-        _status = result?.isSuccess == true 
+        _status = result?.isSuccess == true
           ? 'Downloaded: ${result!.fileName}'
           : 'Failed';
       });
@@ -482,11 +484,38 @@ For `saveFromUrl()`, network errors will throw exceptions:
 
 ```dart
 try {
-  final result = await fileSaver.saveFromUrl(url: 'https://example.com/file.pdf');
+  final result = await fileSaver.save(url: 'https://example.com/file.pdf');
 } catch (e) {
   print('Download failed: $e');
 }
 ```
+
+## Unified save API and migration
+
+Use `PublicFileSaver().save(...)` with exactly one of `bytes`, `file`, or `url`:
+
+```dart
+final saver = PublicFileSaver();
+await saver.save(bytes: bytes, fileName: 'report.pdf');
+await saver.save(file: file, useDialog: true);
+await saver.save(
+  url: 'https://example.com/report.pdf',
+  headers: {'Authorization': 'Bearer token'},
+  timeout: const Duration(seconds: 30),
+);
+```
+
+Bytes require a nonblank `fileName`. MIME type is inferred unless supplied.
+Use `subDir` only for direct saves and `fileSuffixChoices` only with a dialog
+(suffix choices are currently OHOS-specific). URL headers and timeout require
+a URL source. Invalid combinations throw `ArgumentError` before I/O.
+
+`saveBytes`, `saveBytesWithDialog`, `saveFile`, and `saveFromUrl` are deprecated
+but retain their previous behavior. Replace their calls with `save`; for
+`saveBytesWithDialog`, also pass `useDialog: true`. Local files remain unsupported
+on Web. Files and downloads are still buffered in memory; timeout does not
+guarantee cancellation of the underlying request. Browser save dialogs retain
+their existing browser support and user-gesture requirements.
 
 ## License
 

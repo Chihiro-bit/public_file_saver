@@ -13,11 +13,13 @@ class PublicFileSaveData {
   final Uint8List bytes;
   final String fileName;
   final String mimeType;
+  final List<String>? fileSuffixChoices;
 
   const PublicFileSaveData({
     required this.bytes,
     required this.fileName,
     required this.mimeType,
+    this.fileSuffixChoices,
   });
 }
 
@@ -76,6 +78,7 @@ abstract class PublicFileSaverPlatform extends PlatformInterface {
       bytes: resolved.bytes,
       fileName: resolved.fileName,
       mimeType: resolved.mimeType,
+      fileSuffixChoices: resolved.fileSuffixChoices,
     );
   }
 }

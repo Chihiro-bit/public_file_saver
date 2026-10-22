@@ -21,7 +21,7 @@ void main() {
 
     final bytes = utf8.encode('public_file_saver integration test');
 
-    final result = await fileSaver.saveBytes(
+    final result = await fileSaver.save(
       bytes: bytes,
       fileName: 'integration_test_${DateTime.now().millisecondsSinceEpoch}.txt',
       mimeType: 'text/plain',
